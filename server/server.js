@@ -18,20 +18,32 @@ const io = new Server(server, {
 app.use(express.static(path.join(__dirname, 'public')));
 
 io.on('connection', (socket) => {
-    console.log(`User connected: ${socket.id}`);
+    console.log(`✅ User connected: ${socket.id}`);
 
     // --- ROOM LOGIC ---
     socket.on('join-room', (roomId) => {
         socket.join(roomId);
-        console.log(`User ${socket.id} joined room: ${roomId}`);
+        console.log(`📍 User ${socket.id} joined room: ${roomId}`);
         
         // Notify others in the room that a new person joined
         socket.to(roomId).emit('user-connected', socket.id);
     });
 
+    // --- USER MODE HANDLER (NEWLY ADDED) ---
+    socket.on('user-mode', (payload) => {
+        console.log(`👤 User ${socket.id} selected mode: ${payload.mode} in room ${payload.roomId}`);
+        
+        // Relay to other users in the room
+        socket.to(payload.roomId).emit('remote-user-mode', {
+            mode: payload.mode,
+            senderId: socket.id
+        });
+    });
+
     // --- WEBRTC SIGNALING ---
     // 1. Relay the Offer
     socket.on('offer', (payload) => {
+        console.log(`📞 Offer from ${socket.id} to room ${payload.roomId}`);
         // payload should contain { offer, roomId }
         socket.to(payload.roomId).emit('offer', {
             offer: payload.offer,
@@ -41,6 +53,7 @@ io.on('connection', (socket) => {
 
     // 2. Relay the Answer
     socket.on('answer', (payload) => {
+        console.log(`📞 Answer from ${socket.id} to room ${payload.roomId}`);
         // payload should contain { answer, roomId }
         socket.to(payload.roomId).emit('answer', {
             answer: payload.answer,
@@ -55,10 +68,10 @@ io.on('connection', (socket) => {
     });
 
     // --- SIGN LANGUAGE PREDICTION RELAY ---
-    // NEW: Relay sign predictions to the other user
+    // Relay sign predictions to the other user
     socket.on('sign-prediction', (payload) => {
         // payload: { roomId, prediction: { sign, confidence, handedness } }
-        console.log(`Sign detected in room ${payload.roomId}: ${payload.prediction.sign}`);
+        console.log(`🤟 Sign detected in room ${payload.roomId}: ${payload.prediction.sign} (${(payload.prediction.confidence * 100).toFixed(0)}%)`);
         
         // Send to everyone ELSE in the room (not the sender)
         socket.to(payload.roomId).emit('remote-sign-prediction', {
@@ -69,11 +82,13 @@ io.on('connection', (socket) => {
 
     // --- CLEANUP ---
     socket.on('disconnect', () => {
-        console.log(`User disconnected: ${socket.id}`);
+        console.log(`❌ User disconnected: ${socket.id}`);
     });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`✅ Signaling Server running on http://localhost:${PORT}`);
+    console.log(`\n🚀 ASL Video Call Server Running`);
+    console.log(`📡 Signaling Server: http://localhost:${PORT}`);
+    console.log(`🌐 Share with friends: http://localhost:${PORT}\n`);
 });

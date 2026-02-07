@@ -373,6 +373,9 @@ function onHandsDetected(results) {
 
 // Extract landmark data
 function extractLandmarkData(landmarks, handedness) {
+    // Get wrist as reference point
+    const wrist = landmarks[0];
+    
     const data = {
         handedness: handedness,
         landmarks: [],
@@ -383,11 +386,15 @@ function extractLandmarkData(landmarks, handedness) {
         const point = landmarks[i];
         data.landmarks.push({
             id: i,
-            x: point.x,
-            y: point.y,
-            z: point.z
+            x: point.x - wrist.x,  // CENTERED
+            y: point.y - wrist.y,  //  CENTERED
+            z: point.z - wrist.z   //  CENTERED
         });
-        data.flatArray.push(point.x, point.y, point.z);
+        data.flatArray.push(
+            point.x - wrist.x,  // CENTERED
+            point.y - wrist.y,  // CENTERED
+            point.z - wrist.z   // CENTERED
+        );
     }
     
     return data;
@@ -434,11 +441,17 @@ window.addEventListener('load', () => {
 // ML MODEL INTEGRATION
 // ============================================================
 
+// 🔥 UPDATED API CONFIGURATION
 const API_CONFIG = {
     MOCK_API: 'https://jsonplaceholder.typicode.com/posts',
     LOCAL_API: 'http://localhost:5000/predict',
-    PRODUCTION_API: 'https://your-friend-ml-api.onrender.com/predict',
-    ACTIVE: 'MOCK'  // Change to 'LOCAL' or 'PRODUCTION' when ready
+    
+    // 👇 REPLACE THIS WITH YOUR ACTUAL RENDER URL AFTER DEPLOYMENT
+    PRODUCTION_API: 'https://your-app-name.onrender.com/predict',
+    
+    // 👇 SET TO 'PRODUCTION' AFTER DEPLOYING TO RENDER
+    // Options: 'MOCK' (for testing without API), 'LOCAL' (localhost), 'PRODUCTION' (Render)
+    ACTIVE: 'LOCAL'
 };
 
 function getAPIUrl() {
@@ -449,6 +462,11 @@ function getAPIUrl() {
         default: return API_CONFIG.MOCK_API;
     }
 }
+
+// Log current configuration on page load
+console.log('🔗 API Configuration:');
+console.log('  Mode:', API_CONFIG.ACTIVE);
+console.log('  Endpoint:', getAPIUrl());
 
 let lastPredictionTime = 0;
 const PREDICTION_INTERVAL = 1000; // 1 prediction per second
