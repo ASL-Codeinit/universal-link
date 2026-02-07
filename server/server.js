@@ -54,6 +54,19 @@ io.on('connection', (socket) => {
         socket.to(payload.roomId).emit('ice-candidate', payload.candidate);
     });
 
+    // --- SIGN LANGUAGE PREDICTION RELAY ---
+    // NEW: Relay sign predictions to the other user
+    socket.on('sign-prediction', (payload) => {
+        // payload: { roomId, prediction: { sign, confidence, handedness } }
+        console.log(`Sign detected in room ${payload.roomId}: ${payload.prediction.sign}`);
+        
+        // Send to everyone ELSE in the room (not the sender)
+        socket.to(payload.roomId).emit('remote-sign-prediction', {
+            prediction: payload.prediction,
+            senderId: socket.id
+        });
+    });
+
     // --- CLEANUP ---
     socket.on('disconnect', () => {
         console.log(`User disconnected: ${socket.id}`);

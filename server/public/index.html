@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRTC Video Call</title>
+    <title>Sign Language Video Call</title>
     <style>
         * {
             margin: 0;
@@ -24,7 +24,7 @@
         .header {
             color: white;
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
         }
 
         .header h1 {
@@ -38,6 +38,9 @@
             border-radius: 10px;
             backdrop-filter: blur(10px);
             margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
         }
 
         .room-id {
@@ -46,21 +49,73 @@
             color: #fff;
         }
 
-        .copy-btn {
+        .copy-btn, .mode-toggle-btn {
             background: white;
             color: #667eea;
             border: none;
             padding: 8px 20px;
             border-radius: 5px;
             cursor: pointer;
-            margin-left: 10px;
             font-weight: bold;
             transition: all 0.3s;
         }
 
-        .copy-btn:hover {
+        .copy-btn:hover, .mode-toggle-btn:hover {
             transform: scale(1.05);
             box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        /* Mode selection */
+        .mode-selection {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        .mode-selection h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .mode-options {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .mode-option {
+            flex: 1;
+            min-width: 250px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .mode-option:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .mode-option.selected {
+            border-color: #4CAF50;
+            background: #f1f8f4;
+        }
+
+        .mode-option h4 {
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .mode-option p {
+            color: #666;
+            font-size: 14px;
+            margin: 0;
         }
 
         .video-container {
@@ -68,7 +123,8 @@
             gap: 20px;
             flex-wrap: wrap;
             justify-content: center;
-            max-width: 1200px;
+            max-width: 1400px;
+            width: 100%;
         }
 
         .video-wrapper {
@@ -77,6 +133,8 @@
             border-radius: 15px;
             overflow: hidden;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            flex: 1;
+            min-width: 400px;
         }
 
         .overlay-canvas {
@@ -88,25 +146,86 @@
             pointer-events: none;
         }
 
-        .hand-info {
+        /* Subtitle-style interpretation display */
+        .subtitle-overlay {
             position: absolute;
-            bottom: 10px;
-            left: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.9);
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.7) 80%, transparent 100%);
+            padding: 40px 20px 20px 20px;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+            min-height: 100px;
+        }
+
+        .subtitle-text {
             color: #FFFFFF;
-            padding: 10px 15px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-family: Arial, sans-serif;
+            font-size: 24px;
             font-weight: bold;
-            border: 2px solid #4CAF50;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            letter-spacing: 0.5px;
+            line-height: 1.4;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .subtitle-confidence {
+            margin-top: 8px;
+            font-size: 14px;
+            color: #4CAF50;
+            font-weight: normal;
+            opacity: 0.9;
+        }
+
+        /* Small detection indicator for signer's video */
+        .detection-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(76, 175, 80, 0.9);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 6px;
             z-index: 10;
         }
 
+        .detection-indicator.inactive {
+            background: rgba(158, 158, 158, 0.7);
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
         video {
-            width: 400px;
-            height: 300px;
+            width: 100%;
+            height: 400px;
             object-fit: cover;
             display: block;
         }
@@ -117,15 +236,18 @@
             left: 10px;
             background: rgba(0, 0, 0, 0.7);
             color: white;
-            padding: 5px 15px;
+            padding: 6px 16px;
             border-radius: 5px;
             font-size: 14px;
+            font-weight: bold;
+            z-index: 10;
         }
 
         .controls {
             margin-top: 30px;
             display: flex;
             gap: 15px;
+            align-items: center;
         }
 
         button {
@@ -164,17 +286,95 @@
             text-align: center;
         }
 
+        /* Transcript panel */
+        .transcript-panel {
+            margin-top: 30px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 15px;
+            max-width: 800px;
+            width: 100%;
+            max-height: 250px;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .transcript-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .transcript-header h3 {
+            color: #667eea;
+            margin: 0;
+        }
+
+        .transcript-entry {
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            background: #f5f5f5;
+            border-left: 4px solid #667eea;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .transcript-entry strong {
+            color: #667eea;
+        }
+
+        .transcript-entry .timestamp {
+            color: #999;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+
+        .clear-btn {
+            background: #ff5252;
+            color: white;
+            padding: 6px 16px;
+            font-size: 14px;
+        }
+
+        .clear-btn:hover {
+            background: #ff1744;
+        }
+
         @media (max-width: 768px) {
             video {
-                width: 300px;
-                height: 225px;
+                height: 300px;
+            }
+            
+            .video-wrapper {
+                min-width: 300px;
+            }
+            
+            .subtitle-text {
+                font-size: 18px;
             }
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>🎥 WebRTC Video Call</h1>
+        <h1>🤟 Sign Language Video Call</h1>
+        <p style="color: rgba(255,255,255,0.9); font-size: 16px;">Bridging communication with real-time sign language interpretation</p>
+    </div>
+
+    <!-- Mode Selection -->
+    <div class="mode-selection" id="modeSelection">
+        <h3>👋 Select Your Communication Mode</h3>
+        <div class="mode-options">
+            <div class="mode-option" onclick="selectMode('signer')" id="signerMode">
+                <h4>🤟 I Use Sign Language</h4>
+                <p>I'll sign, and my friend will see subtitles</p>
+            </div>
+            <div class="mode-option" onclick="selectMode('speaker')" id="speakerMode">
+                <h4>🗣️ I Speak Verbally</h4>
+                <p>I'll see subtitles of my friend's signs</p>
+            </div>
+        </div>
     </div>
 
     <div class="room-info">
@@ -183,15 +383,33 @@
     </div>
 
     <div class="video-container">
+        <!-- Local Video (You) -->
         <div class="video-wrapper">
             <video id="localVideo" autoplay muted playsinline></video>
             <canvas id="localCanvas" class="overlay-canvas"></canvas>
-            <div class="video-label">You</div>
-            <div class="hand-info" id="localHandInfo">No hands detected</div>
+            <div class="video-label" id="localLabel">You</div>
+            
+            <!-- Detection indicator (only visible for signers) -->
+            <div class="detection-indicator inactive" id="localDetection" style="display: none;">
+                <span class="pulse-dot"></span>
+                <span>Detecting...</span>
+            </div>
+            
+            <!-- Subtitle overlay for signer to see their own interpretation -->
+            <div class="subtitle-overlay" id="localSubtitles" style="display: none;">
+                <div class="subtitle-text" id="localSubtitleText">Waiting for signs...</div>
+            </div>
         </div>
+
+        <!-- Remote Video (Friend) -->
         <div class="video-wrapper">
             <video id="remoteVideo" autoplay playsinline></video>
             <div class="video-label">Friend</div>
+            
+            <!-- Subtitle overlay (where friend's signs appear as subtitles) -->
+            <div class="subtitle-overlay" id="remoteSubtitles" style="display: none;">
+                <div class="subtitle-text" id="remoteSubtitleText">Waiting for connection...</div>
+            </div>
         </div>
     </div>
 
@@ -203,10 +421,21 @@
     </div>
 
     <div class="status" id="status">
-        Waiting for connection...
+        Select your mode above, then start the call
     </div>
 
-    <!-- MediaPipe Libraries - Load in correct order -->
+    <!-- Transcript Panel -->
+    <div class="transcript-panel">
+        <div class="transcript-header">
+            <h3>📝 Conversation Transcript</h3>
+            <button class="clear-btn" onclick="clearTranscript()">Clear</button>
+        </div>
+        <div id="transcriptContent">
+            <p style="text-align: center; color: #999;">Sign language translations will appear here...</p>
+        </div>
+    </div>
+
+    <!-- MediaPipe Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
     

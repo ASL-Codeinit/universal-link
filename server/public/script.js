@@ -1,3 +1,33 @@
+// ============================================================
+// USER MODE SELECTION
+// ============================================================
+
+let userMode = null; // 'signer' or 'speaker'
+
+function selectMode(mode) {
+    userMode = mode;
+    
+    // Update UI
+    document.getElementById('signerMode').classList.remove('selected');
+    document.getElementById('speakerMode').classList.remove('selected');
+    
+    if (mode === 'signer') {
+        document.getElementById('signerMode').classList.add('selected');
+        updateStatus('You selected: Sign Language User - Your signs will be interpreted');
+        
+        // Show detection indicator on local video
+        document.getElementById('localDetection').style.display = 'flex';
+    } else {
+        document.getElementById('speakerMode').classList.add('selected');
+        updateStatus('You selected: Verbal Speaker - You\'ll see subtitles of signs');
+        
+        // Show subtitles on remote video
+        document.getElementById('remoteSubtitles').style.display = 'block';
+    }
+    
+    console.log('User mode set to:', mode);
+}
+
 // --- ROOM ID MANAGEMENT ---
 function generateRoomID() {
     const part = () => Math.random().toString(36).substring(2, 6);
@@ -128,6 +158,11 @@ pc.onconnectionstatechange = () => {
 
 // --- START CALL FUNCTION ---
 async function startCall() {
+    if (!userMode) {
+        alert('Please select your communication mode first!');
+        return;
+    }
+    
     if (isCallStarted) {
         updateStatus('Call already started!');
         return;
@@ -135,6 +170,12 @@ async function startCall() {
     
     isCallStarted = true;
     document.getElementById('startCallBtn').disabled = true;
+    
+    // Send mode to other user
+    socket.emit('user-mode', {
+        roomId: roomId,
+        mode: userMode
+    });
     
     try {
         updateStatus('Creating offer...');
@@ -162,6 +203,16 @@ async function startCall() {
 socket.on('user-connected', (userId) => {
     console.log('User connected to room:', userId);
     updateStatus('Friend joined the room!');
+});
+
+// Receive remote user's mode
+socket.on('remote-user-mode', (data) => {
+    console.log('Remote user mode:', data.mode);
+    
+    // If they're a signer, we should show subtitles
+    if (data.mode === 'signer' && userMode === 'speaker') {
+        document.getElementById('remoteSubtitles').style.display = 'block';
+    }
 });
 
 // Handle incoming offer
@@ -210,6 +261,20 @@ socket.on('ice-candidate', async (candidate) => {
     }
 });
 
+// ============================================
+// RECEIVE REMOTE USER'S SIGN PREDICTION
+// ============================================
+
+socket.on('remote-sign-prediction', (data) => {
+    console.log('📥 Received sign from remote user:', data.prediction);
+    
+    // Only display if we're a speaker (we want to see their signs)
+    if (userMode === 'speaker') {
+        displayRemoteSubtitles(data.prediction);
+        addToTranscript(data.prediction.sign);
+    }
+});
+
 // --- UTILITY FUNCTIONS ---
 function updateStatus(message) {
     document.getElementById('status').textContent = message;
@@ -233,10 +298,10 @@ function initializeMediaPipe() {
 
     // Configure MediaPipe settings
     hands.setOptions({
-        maxNumHands: 2,              // Detect up to 2 hands
-        modelComplexity: 1,          // 0=lite, 1=full (balanced)
-        minDetectionConfidence: 0.5, // Minimum confidence to detect hand
-        minTrackingConfidence: 0.5   // Minimum confidence to track hand
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
     });
 
     // Set up the callback when hands are detected
@@ -254,110 +319,84 @@ function onHandsDetected(results) {
     const canvas = document.getElementById('localCanvas');
     const ctx = canvas.getContext('2d');
     
-    console.log('🖐️ onHandsDetected called, hands found:', results.multiHandLandmarks?.length || 0);
-    
     // Match canvas size to video size
     const video = document.getElementById('localVideo');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    
-    console.log('Canvas size:', canvas.width, 'x', canvas.height);
     
     // Clear previous drawings
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     // Draw the hand landmarks if detected
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        console.log('✅ Drawing', results.multiHandLandmarks.length, 'hand(s)');
         
         for (let i = 0; i < results.multiHandLandmarks.length; i++) {
             const landmarks = results.multiHandLandmarks[i];
-            const handedness = results.multiHandedness[i].label; // "Left" or "Right"
+            const handedness = results.multiHandedness[i].label;
             
-            console.log('Drawing hand', i, '- Handedness:', handedness, '- Landmarks:', landmarks.length);
-            
-            // Draw connections between landmarks
+            // Draw connections between landmarks (ALWAYS draw, regardless of mode)
             drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
                 color: '#00FF00',
                 lineWidth: 2
             });
             
-            // Draw the landmark points
+            // Draw the landmark points (ALWAYS draw, regardless of mode)
             drawLandmarks(ctx, landmarks, {
                 color: '#FF0000',
                 lineWidth: 1,
                 radius: 3
             });
             
-            // Extract and log the landmark data (21 points)
-            const landmarkData = extractLandmarkData(landmarks, handedness);
-            
-            // ============================================
-            // SEND TO ML MODEL (NEW!)
-            // ============================================
-            sendToMLModel(landmarkData);
-            
-            // Note: updateHandInfo() is commented out so predictions show instead
-            // If you want to see landmark debug info, uncomment the line below:
-            // updateHandInfo(landmarkData, handedness);
+            // Only process for interpretation if user is a signer
+            if (userMode === 'signer') {
+                // Update detection indicator
+                const indicator = document.getElementById('localDetection');
+                indicator.classList.remove('inactive');
+                indicator.innerHTML = '<span class="pulse-dot"></span><span>Detecting ✓</span>';
+                
+                // Extract landmark data
+                const landmarkData = extractLandmarkData(landmarks, handedness);
+                
+                // Send to ML model
+                sendToMLModel(landmarkData);
+            }
         }
     } else {
         // No hands detected
-        console.log('❌ No hands detected in this frame');
-        document.getElementById('localHandInfo').textContent = 'No hands detected';
-        clearPredictionDisplay();
+        if (userMode === 'signer') {
+            const indicator = document.getElementById('localDetection');
+            indicator.classList.add('inactive');
+            indicator.innerHTML = '<span class="pulse-dot"></span><span>Detecting...</span>';
+        }
     }
 }
 
-// Extract landmark data in a format ready for ML model
+// Extract landmark data
 function extractLandmarkData(landmarks, handedness) {
-    // landmarks is an array of 21 points
-    // Each point has x, y, z coordinates
-    
     const data = {
-        handedness: handedness, // "Left" or "Right"
+        handedness: handedness,
         landmarks: [],
-        flatArray: [] // Flattened array for ML model
+        flatArray: []
     };
     
-    // Extract each of the 21 landmarks
     for (let i = 0; i < landmarks.length; i++) {
         const point = landmarks[i];
-        
-        // Store as object (easier to read)
         data.landmarks.push({
             id: i,
             x: point.x,
             y: point.y,
             z: point.z
         });
-        
-        // Store as flat array (what ML models typically need)
         data.flatArray.push(point.x, point.y, point.z);
     }
     
     return data;
 }
 
-// Update the hand info display
-function updateHandInfo(landmarkData, handedness) {
-    const infoDiv = document.getElementById('localHandInfo');
-    const numPoints = landmarkData.landmarks.length;
-    
-    // Show basic info
-    infoDiv.innerHTML = `
-        <strong>${handedness} Hand Detected</strong><br>
-        Points: ${numPoints} | 
-        Wrist: (${landmarkData.landmarks[0].x.toFixed(2)}, ${landmarkData.landmarks[0].y.toFixed(2)})
-    `;
-}
-
 // Process video frames continuously
 async function startHandDetection() {
     const video = document.getElementById('localVideo');
-    const canvas = document.getElementById('processingCanvas');
     
-    // Wait for video to be ready
     if (!video.videoWidth || !video.videoHeight) {
         setTimeout(startHandDetection, 100);
         return;
@@ -365,18 +404,15 @@ async function startHandDetection() {
     
     console.log('🎥 Starting hand detection...');
     
-    // Process frames continuously
     async function detectFrame() {
         if (!isMediaPipeReady) return;
         
         try {
-            // Send the video frame to MediaPipe
             await hands.send({ image: video });
         } catch (error) {
             console.error('Error processing frame:', error);
         }
         
-        // Process next frame (runs continuously)
         requestAnimationFrame(detectFrame);
     }
     
@@ -384,9 +420,7 @@ async function startHandDetection() {
 }
 
 // Initialize MediaPipe when page loads
-// We'll call this after the camera is ready
 window.addEventListener('load', () => {
-    // Wait a bit for video to start, then initialize
     setTimeout(() => {
         if (typeof Hands !== 'undefined') {
             initializeMediaPipe();
@@ -397,86 +431,54 @@ window.addEventListener('load', () => {
 });
 
 // ============================================================
-// ML MODEL INTEGRATION (Python API)
+// ML MODEL INTEGRATION
 // ============================================================
 
-// ============================================
-// CONFIGURATION - UPDATE THESE WHEN BACKEND IS READY
-// ============================================
-
 const API_CONFIG = {
-    // PHASE 1: Development (Mock API for testing)
-    MOCK_API: 'https://jsonplaceholder.typicode.com/posts',  // Placeholder
-    
-    // PHASE 2: Local Testing (Friend's API on localhost)
+    MOCK_API: 'https://jsonplaceholder.typicode.com/posts',
     LOCAL_API: 'http://localhost:5000/predict',
-    
-    // PHASE 3: Production (Friend's deployed API)
     PRODUCTION_API: 'https://your-friend-ml-api.onrender.com/predict',
-    
-    // Current active endpoint
-    // Change this as you progress through phases
-    ACTIVE: 'MOCK'  // Options: 'MOCK', 'LOCAL', 'PRODUCTION'
+    ACTIVE: 'MOCK'  // Change to 'LOCAL' or 'PRODUCTION' when ready
 };
 
-// Get the active API URL
 function getAPIUrl() {
     switch(API_CONFIG.ACTIVE) {
-        case 'MOCK':
-            return API_CONFIG.MOCK_API;
-        case 'LOCAL':
-            return API_CONFIG.LOCAL_API;
-        case 'PRODUCTION':
-            return API_CONFIG.PRODUCTION_API;
-        default:
-            return API_CONFIG.MOCK_API;
+        case 'MOCK': return API_CONFIG.MOCK_API;
+        case 'LOCAL': return API_CONFIG.LOCAL_API;
+        case 'PRODUCTION': return API_CONFIG.PRODUCTION_API;
+        default: return API_CONFIG.MOCK_API;
     }
 }
 
 let lastPredictionTime = 0;
-const PREDICTION_INTERVAL = 500; // Predict every 500ms (2 predictions per second)
+const PREDICTION_INTERVAL = 1000; // 1 prediction per second
 let currentPrediction = null;
 let apiCallCount = 0;
 let successfulCalls = 0;
 let failedCalls = 0;
 
-// ============================================
-// A. SEND LANDMARKS TO FRIEND'S BACKEND
-// ============================================
-
+// Send landmarks to ML model
 async function sendToMLModel(landmarkData) {
     const now = Date.now();
     
-    // Throttle predictions - don't predict every single frame
     if (now - lastPredictionTime < PREDICTION_INTERVAL) {
-        return; // Skip this frame
+        return;
     }
     
     lastPredictionTime = now;
     apiCallCount++;
     
-    // The flat array your friend's model needs
-    const landmarksArray = landmarkData.flatArray; // [x1, y1, z1, x2, y2, z2, ...] (63 numbers)
+    const landmarksArray = landmarkData.flatArray;
     
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📤 SENDING TO BACKEND (Call #' + apiCallCount + ')');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('Endpoint:', getAPIUrl());
-    console.log('Landmark count:', landmarksArray.length, 'values');
-    console.log('Handedness:', landmarkData.handedness);
-    console.log('Sample data:', landmarksArray.slice(0, 9), '...');
+    console.log('📤 Sending to ML model (Call #' + apiCallCount + ')');
     
     try {
-        // Prepare the request payload
         const requestPayload = {
-            landmarks: landmarksArray,           // 63 numbers - FRIEND WILL USE THIS
-            handedness: landmarkData.handedness, // "Left" or "Right"
-            timestamp: now                        // When captured
+            landmarks: landmarksArray,
+            handedness: landmarkData.handedness,
+            timestamp: now
         };
         
-        console.log('Request payload:', requestPayload);
-        
-        // Make HTTP POST request to friend's backend
         const response = await fetch(getAPIUrl(), {
             method: 'POST',
             headers: {
@@ -486,99 +488,117 @@ async function sendToMLModel(landmarkData) {
             body: JSON.stringify(requestPayload)
         });
         
-        console.log('Response status:', response.status);
-        
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
-        // ============================================
-        // B. RECEIVE INTERPRETED TEXT FROM FRIEND
-        // ============================================
-        
         const predictionData = await response.json();
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('📥 RECEIVED FROM BACKEND');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('Raw response:', predictionData);
-        
-        // Parse friend's response
-        // Expected format: { sign: "Hello", confidence: 0.95 }
         const prediction = parseFriendResponse(predictionData, landmarkData.handedness);
         
-        console.log('Parsed prediction:', prediction);
-        console.log('✅ Success! API call completed.');
-        
+        console.log('✅ Prediction received:', prediction);
         successfulCalls++;
         
-        // Display the prediction on screen
-        displayPrediction(prediction);
+        // Send to remote user
+        sendPredictionToRemote(prediction);
         
-        // Store current prediction
+        // Also display on OWN screen (signer sees their own interpretation)
+        displayLocalSubtitles(prediction);
+        
+        // Add to transcript
+        addToTranscript(prediction.sign);
+        
         currentPrediction = prediction;
-        
-        // Update statistics
         updateAPIStats();
         
     } catch (error) {
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.error('❌ API ERROR');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.error('Error details:', error.message);
-        console.error('Full error:', error);
-        
+        console.error('❌ API Error:', error.message);
         failedCalls++;
-        
-        // Show error in UI
-        displayError(error.message);
-        
-        // Update statistics
         updateAPIStats();
         
-        // Optional: Fallback to mock prediction for testing UI
+        // Fallback to mock for testing
         if (API_CONFIG.ACTIVE === 'MOCK') {
-            console.log('📝 Using mock prediction for testing...');
             const mockPrediction = generateMockPrediction(landmarkData.handedness);
-            displayPrediction(mockPrediction);
+            sendPredictionToRemote(mockPrediction);
+            displayLocalSubtitles(mockPrediction);
+            addToTranscript(mockPrediction.sign);
         }
     }
 }
 
-// ============================================
-// PARSE FRIEND'S RESPONSE
-// ============================================
+// Send prediction to remote user
+function sendPredictionToRemote(prediction) {
+    console.log('📤 Sending prediction to remote user:', prediction);
+    
+    socket.emit('sign-prediction', {
+        roomId: roomId,
+        prediction: {
+            sign: prediction.sign,
+            confidence: prediction.confidence,
+            handedness: prediction.handedness,
+            timestamp: prediction.timestamp || Date.now()
+        }
+    });
+}
 
+// Display remote user's signs as subtitles
+function displayRemoteSubtitles(prediction) {
+    const subtitleText = document.getElementById('remoteSubtitleText');
+    
+    const confidencePercent = (prediction.confidence * 100).toFixed(0);
+    const confidenceColor = prediction.confidence > 0.8 ? '#4CAF50' : 
+                           prediction.confidence > 0.6 ? '#FFA500' : '#FF5252';
+    
+    const mockBadge = prediction.isMock ? ' <span style="color: #FFA500; font-size: 14px;">[TEST]</span>' : '';
+    
+    subtitleText.innerHTML = `
+        ${prediction.sign}${mockBadge}
+        <div class="subtitle-confidence" style="color: ${confidenceColor};">
+            Confidence: ${confidencePercent}%
+        </div>
+    `;
+}
+
+// Display YOUR OWN signs as subtitles on your local screen
+function displayLocalSubtitles(prediction) {
+    const localSubtitles = document.getElementById('localSubtitles');
+    
+    // Make sure subtitles are visible
+    localSubtitles.style.display = 'block';
+    
+    const localSubtitleText = document.getElementById('localSubtitleText');
+    
+    const confidencePercent = (prediction.confidence * 100).toFixed(0);
+    const confidenceColor = prediction.confidence > 0.8 ? '#4CAF50' : 
+                           prediction.confidence > 0.6 ? '#FFA500' : '#FF5252';
+    
+    const mockBadge = prediction.isMock ? ' <span style="color: #FFA500; font-size: 14px;">[TEST]</span>' : '';
+    
+    localSubtitleText.innerHTML = `
+        ${prediction.sign}${mockBadge}
+        <div class="subtitle-confidence" style="color: ${confidenceColor};">
+            Confidence: ${confidencePercent}%
+        </div>
+    `;
+}
+
+// Parse response from ML API
 function parseFriendResponse(responseData, handedness) {
-    /*
-    This function handles different response formats your friend might send.
-    Adapt this based on their actual API response structure.
-    */
-    
-    // Expected format from friend:
-    // { "sign": "Hello", "confidence": 0.95 }
-    
     let sign = 'Unknown';
     let confidence = 0.0;
     
-    // Handle different possible response formats
     if (responseData.sign && responseData.confidence !== undefined) {
-        // Standard format
         sign = responseData.sign;
         confidence = responseData.confidence;
     } else if (responseData.prediction && responseData.score) {
-        // Alternative format 1
         sign = responseData.prediction;
         confidence = responseData.score;
     } else if (responseData.label && responseData.probability) {
-        // Alternative format 2
         sign = responseData.label;
         confidence = responseData.probability;
     } else if (typeof responseData === 'string') {
-        // If they just send the sign as a string
         sign = responseData;
         confidence = 1.0;
     } else {
-        // Mock API response (JSONPlaceholder returns different structure)
         sign = 'Mock-' + (responseData.id || 'Test');
         confidence = 0.85;
     }
@@ -591,22 +611,15 @@ function parseFriendResponse(responseData, handedness) {
     };
 }
 
-// ============================================
-// MOCK PREDICTION (For Testing UI)
-// ============================================
-
+// Generate mock predictions for testing
 function generateMockPrediction(handedness) {
-    /*
-    This generates fake predictions for testing the UI
-    while waiting for friend's backend.
-    */
     const signs = [
         'Hello', 'Thank You', 'Yes', 'No', 'Please', 
         'Sorry', 'Help', 'Stop', 'Good', 'Bad'
     ];
     
     const randomSign = signs[Math.floor(Math.random() * signs.length)];
-    const randomConfidence = 0.7 + Math.random() * 0.3; // 0.7 to 1.0
+    const randomConfidence = 0.7 + Math.random() * 0.3;
     
     return {
         sign: randomSign,
@@ -617,73 +630,61 @@ function generateMockPrediction(handedness) {
     };
 }
 
-// ============================================
-// DISPLAY PREDICTION ON SCREEN
-// ============================================
-
-function displayPrediction(prediction) {
-    const infoDiv = document.getElementById('localHandInfo');
-    
-    const confidencePercent = (prediction.confidence * 100).toFixed(0);
-    const confidenceColor = prediction.confidence > 0.8 ? '#4CAF50' : 
-                           prediction.confidence > 0.6 ? '#FFA500' : '#FF5252';
-    
-    const mockBadge = prediction.isMock ? ' <span style="color: #FFA500;">[MOCK]</span>' : '';
-    
-    infoDiv.innerHTML = `
-        <strong style="color: ${confidenceColor}; font-size: 16px;">
-            ${prediction.sign}${mockBadge}
-        </strong><br>
-        <small>
-            Confidence: ${confidencePercent}% | 
-            Hand: ${prediction.handedness}
-        </small>
-    `;
-}
-
-// ============================================
-// DISPLAY ERROR
-// ============================================
-
-function displayError(errorMessage) {
-    const infoDiv = document.getElementById('localHandInfo');
-    
-    infoDiv.innerHTML = `
-        <strong style="color: #FF5252;">⚠️ API Error</strong><br>
-        <small>${errorMessage}</small>
-    `;
-}
-
-// Clear prediction display when no hands detected
-function clearPredictionDisplay() {
-    currentPrediction = null;
-    document.getElementById('localHandInfo').textContent = 'No hands detected';
-}
-
-// ============================================
-// API STATISTICS (For Monitoring)
-// ============================================
-
+// API statistics
 function updateAPIStats() {
     const successRate = apiCallCount > 0 
         ? ((successfulCalls / apiCallCount) * 100).toFixed(1) 
         : 0;
     
     console.log('📊 API Statistics:');
-    console.log('  Total calls:', apiCallCount);
-    console.log('  Successful:', successfulCalls);
+    console.log('  Total:', apiCallCount);
+    console.log('  Success:', successfulCalls);
     console.log('  Failed:', failedCalls);
-    console.log('  Success rate:', successRate + '%');
+    console.log('  Rate:', successRate + '%');
+}
+
+// ============================================
+// TRANSCRIPT
+// ============================================
+
+let transcript = [];
+
+function addToTranscript(sign) {
+    const timestamp = new Date().toLocaleTimeString();
+    transcript.push({ sign, timestamp });
+    updateTranscriptDisplay();
+}
+
+function updateTranscriptDisplay() {
+    const content = document.getElementById('transcriptContent');
+    
+    if (transcript.length === 0) {
+        content.innerHTML = '<p style="text-align: center; color: #999;">Sign language translations will appear here...</p>';
+        return;
+    }
+    
+    content.innerHTML = transcript.slice(-20).map(entry => `
+        <div class="transcript-entry">
+            <strong>${entry.sign}</strong>
+            <span class="timestamp">${entry.timestamp}</span>
+        </div>
+    `).join('');
+    
+    content.scrollTop = content.scrollHeight;
+}
+
+function clearTranscript() {
+    transcript = [];
+    updateTranscriptDisplay();
 }
 
 // ============================================
 // TESTING UTILITIES
 // ============================================
 
-// Test API connectivity (call this manually from console)
 window.testMLAPI = async function() {
-    console.log('🧪 Testing ML API connection...');
-    console.log('Current endpoint:', getAPIUrl());
+    console.log('🧪 Testing ML API...');
+    console.log('Endpoint:', getAPIUrl());
     
     const testLandmarks = Array(63).fill(0).map(() => Math.random());
     
@@ -699,80 +700,21 @@ window.testMLAPI = async function() {
         });
         
         const data = await response.json();
-        console.log('✅ API Test Successful!');
-        console.log('Response:', data);
+        console.log('✅ Success!', data);
         return data;
     } catch (error) {
-        console.error('❌ API Test Failed!');
-        console.error('Error:', error.message);
+        console.error('❌ Failed!', error);
         return null;
     }
 };
 
-// Switch between API modes (call from console)
 window.switchAPIMode = function(mode) {
     const validModes = ['MOCK', 'LOCAL', 'PRODUCTION'];
     if (validModes.includes(mode)) {
         API_CONFIG.ACTIVE = mode;
-        console.log('✅ Switched to', mode, 'mode');
-        console.log('Current endpoint:', getAPIUrl());
+        console.log('✅ Switched to', mode);
+        console.log('Endpoint:', getAPIUrl());
     } else {
         console.error('❌ Invalid mode. Use: MOCK, LOCAL, or PRODUCTION');
     }
 };
-
-// ============================================
-// INTEGRATION GUIDE FOR YOUR FRIEND
-// ============================================
-/*
-
-STEP 1: Your friend creates their ML model function
--------------------------------------------------------
-// File: ml-model.js (your friend creates this)
-
-function predictSign(landmarkArray) {
-    // landmarkArray is an array of 63 numbers:
-    // [x1, y1, z1, x2, y2, z2, ..., x21, y21, z21]
-    
-    // Your friend's ML model code here
-    // Example with TensorFlow.js:
-    
-    const tensor = tf.tensor2d([landmarkArray], [1, 63]);
-    const prediction = model.predict(tensor);
-    const predictedClass = prediction.argMax(-1).dataSync()[0];
-    const confidence = prediction.max().dataSync()[0];
-    
-    const signLabels = ['Hello', 'Thank You', 'Yes', 'No', ...];
-    
-    return {
-        sign: signLabels[predictedClass],
-        confidence: confidence
-    };
-}
-
-
-STEP 2: Import their model file in index.html
--------------------------------------------------------
-<!-- Add before script.js -->
-<script src="ml-model.js"></script>
-<script src="script.js"></script>
-
-
-STEP 3: Replace mockMLModel with their function
--------------------------------------------------------
-In sendToMLModel() function above, change:
-
-    const prediction = mockMLModel(inputArray, landmarkData.handedness);
-
-To:
-
-    const prediction = predictSign(inputArray);
-
-
-STEP 4: Test!
--------------------------------------------------------
-- Make a hand gesture
-- See the predicted sign appear
-- Check confidence level
-
-*/
