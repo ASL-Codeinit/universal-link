@@ -48,7 +48,17 @@ updateStatus('Connected to server. Room: ' + roomId);
 const configuration = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        {
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+        },
+        {
+            urls: 'turn:openrelay.metered.ca:443',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+        }
     ]
 };
 
@@ -205,3 +215,170 @@ function updateStatus(message) {
     document.getElementById('status').textContent = message;
     console.log('Status:', message);
 }
+
+// ============================================================
+// MEDIAPIPE HANDS DETECTION
+// ============================================================
+
+let hands;
+let isMediaPipeReady = false;
+
+// Initialize MediaPipe Hands
+function initializeMediaPipe() {
+    hands = new Hands({
+        locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }
+    });
+
+    // Configure MediaPipe settings
+    hands.setOptions({
+        maxNumHands: 2,              // Detect up to 2 hands
+        modelComplexity: 1,          // 0=lite, 1=full (balanced)
+        minDetectionConfidence: 0.5, // Minimum confidence to detect hand
+        minTrackingConfidence: 0.5   // Minimum confidence to track hand
+    });
+
+    // Set up the callback when hands are detected
+    hands.onResults(onHandsDetected);
+
+    isMediaPipeReady = true;
+    console.log('✅ MediaPipe Hands initialized');
+    
+    // Start processing frames
+    startHandDetection();
+}
+
+// Callback function when MediaPipe detects hands
+function onHandsDetected(results) {
+    const canvas = document.getElementById('localCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Match canvas size to video size
+    const video = document.getElementById('localVideo');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Clear previous drawings
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw the hand landmarks if detected
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+            const landmarks = results.multiHandLandmarks[i];
+            const handedness = results.multiHandedness[i].label; // "Left" or "Right"
+            
+            // Draw connections between landmarks
+            drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
+                color: '#00FF00',
+                lineWidth: 2
+            });
+            
+            // Draw the landmark points
+            drawLandmarks(ctx, landmarks, {
+                color: '#FF0000',
+                lineWidth: 1,
+                radius: 3
+            });
+            
+            // Extract and log the landmark data (21 points)
+            const landmarkData = extractLandmarkData(landmarks, handedness);
+            
+            // Update info display
+            updateHandInfo(landmarkData, handedness);
+            
+            // TODO: Your friend will use this data for ML model
+            console.log('Landmarks for', handedness, 'hand:', landmarkData);
+        }
+    } else {
+        // No hands detected
+        document.getElementById('localHandInfo').textContent = 'No hands detected';
+    }
+}
+
+// Extract landmark data in a format ready for ML model
+function extractLandmarkData(landmarks, handedness) {
+    // landmarks is an array of 21 points
+    // Each point has x, y, z coordinates
+    
+    const data = {
+        handedness: handedness, // "Left" or "Right"
+        landmarks: [],
+        flatArray: [] // Flattened array for ML model
+    };
+    
+    // Extract each of the 21 landmarks
+    for (let i = 0; i < landmarks.length; i++) {
+        const point = landmarks[i];
+        
+        // Store as object (easier to read)
+        data.landmarks.push({
+            id: i,
+            x: point.x,
+            y: point.y,
+            z: point.z
+        });
+        
+        // Store as flat array (what ML models typically need)
+        data.flatArray.push(point.x, point.y, point.z);
+    }
+    
+    return data;
+}
+
+// Update the hand info display
+function updateHandInfo(landmarkData, handedness) {
+    const infoDiv = document.getElementById('localHandInfo');
+    const numPoints = landmarkData.landmarks.length;
+    
+    // Show basic info
+    infoDiv.innerHTML = `
+        <strong>${handedness} Hand Detected</strong><br>
+        Points: ${numPoints} | 
+        Wrist: (${landmarkData.landmarks[0].x.toFixed(2)}, ${landmarkData.landmarks[0].y.toFixed(2)})
+    `;
+}
+
+// Process video frames continuously
+async function startHandDetection() {
+    const video = document.getElementById('localVideo');
+    const canvas = document.getElementById('processingCanvas');
+    
+    // Wait for video to be ready
+    if (!video.videoWidth || !video.videoHeight) {
+        setTimeout(startHandDetection, 100);
+        return;
+    }
+    
+    console.log('🎥 Starting hand detection...');
+    
+    // Process frames continuously
+    async function detectFrame() {
+        if (!isMediaPipeReady) return;
+        
+        try {
+            // Send the video frame to MediaPipe
+            await hands.send({ image: video });
+        } catch (error) {
+            console.error('Error processing frame:', error);
+        }
+        
+        // Process next frame (runs continuously)
+        requestAnimationFrame(detectFrame);
+    }
+    
+    detectFrame();
+}
+
+// Initialize MediaPipe when page loads
+// We'll call this after the camera is ready
+window.addEventListener('load', () => {
+    // Wait a bit for video to start, then initialize
+    setTimeout(() => {
+        if (typeof Hands !== 'undefined') {
+            initializeMediaPipe();
+        } else {
+            console.error('MediaPipe Hands library not loaded');
+        }
+    }, 2000);
+});

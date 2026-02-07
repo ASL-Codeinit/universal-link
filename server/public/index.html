@@ -79,6 +79,28 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
 
+        .overlay-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .hand-info {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #4CAF50;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-family: monospace;
+        }
+
         video {
             width: 400px;
             height: 300px;
@@ -160,13 +182,18 @@
     <div class="video-container">
         <div class="video-wrapper">
             <video id="localVideo" autoplay muted playsinline></video>
+            <canvas id="localCanvas" class="overlay-canvas"></canvas>
             <div class="video-label">You</div>
+            <div class="hand-info" id="localHandInfo">No hands detected</div>
         </div>
         <div class="video-wrapper">
             <video id="remoteVideo" autoplay playsinline></video>
             <div class="video-label">Friend</div>
         </div>
     </div>
+
+    <!-- Hidden canvas for processing frames -->
+    <canvas id="processingCanvas" style="display: none;"></canvas>
 
     <div class="controls">
         <button class="start-call-btn" onclick="startCall()" id="startCallBtn">Start Call</button>
@@ -176,6 +203,11 @@
         Waiting for connection...
     </div>
 
+    <!-- MediaPipe Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    
     <script src="/socket.io/socket.io.js"></script>
     <script src="script.js"></script>
 </body>
