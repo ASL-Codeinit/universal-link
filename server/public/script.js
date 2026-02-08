@@ -7,6 +7,10 @@ let userMode = 'speaker';
 let roomId = null;
 let socket = null;
 
+// Control button states
+let isMicMuted = false;
+let isCameraMuted = false;
+
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', function() {
     // Get user mode from sessionStorage (set in start.html)
@@ -140,6 +144,17 @@ async function initializeMedia() {
         
         updateStatus('Camera and microphone ready!');
         
+        // Initialize MediaPipe if user is a signer
+        if (userMode === 'signer') {
+            setTimeout(() => {
+                if (typeof Hands !== 'undefined') {
+                    initializeMediaPipe();
+                } else {
+                    console.error('MediaPipe Hands library not loaded');
+                }
+            }, 1000);
+        }
+        
         // Auto-start call
         setTimeout(() => startCall(), 1000);
     } catch (error) {
@@ -154,16 +169,23 @@ async function initializeMedia() {
 
 // Handle incoming remote stream
 pc.ontrack = (event) => {
-    console.log('Received remote track');
+    console.log('📹 Received remote track:', event.track.kind);
     const remoteVideo = document.getElementById('remoteVideo');
     if (remoteVideo.srcObject !== event.streams[0]) {
         remoteVideo.srcObject = event.streams[0];
+        console.log('✅ Remote video stream attached');
         updateStatus('Connected! Video call active.');
         
         // Hide status message
         const statusMsg = document.getElementById('statusMessage');
         if (statusMsg) {
             statusMsg.style.display = 'none';
+        }
+        
+        // Update remote name
+        const remoteName = document.getElementById('remoteName');
+        if (remoteName) {
+            remoteName.textContent = 'Friend';
         }
     }
 };
@@ -229,18 +251,27 @@ async function startCall() {
 function setupSocketHandlers() {
     // When another user connects to the room
     socket.on('user-connected', (userId) => {
-        console.log('User connected to room:', userId);
+        console.log('✅ User connected to room:', userId);
         updateStatus('Friend joined the room!');
+        
+        // Update remote name
+        const remoteName = document.getElementById('remoteName');
+        if (remoteName) {
+            remoteName.textContent = 'Friend Connected';
+        }
     });
 
     // Receive remote user's mode
     socket.on('remote-user-mode', (data) => {
-        console.log('Remote user mode:', data.mode);
+        console.log('👤 Remote user mode:', data.mode);
         
         // If they're a signer, we should show subtitles
         if (data.mode === 'signer' && userMode === 'speaker') {
             const remoteSubtitles = document.getElementById('remoteSubtitles');
-            if (remoteSubtitles) remoteSubtitles.style.display = 'block';
+            if (remoteSubtitles) {
+                remoteSubtitles.style.display = 'block';
+                console.log('📺 Showing remote subtitles for signer');
+            }
         }
     });
 
@@ -292,7 +323,14 @@ function setupSocketHandlers() {
 
     // Handle remote sign predictions
     socket.on('remote-sign-prediction', (data) => {
-        console.log('Received remote sign prediction:', data.prediction);
+        console.log('🤟 Received remote sign prediction:', data.prediction);
+        
+        // Make sure remote subtitles are visible
+        const remoteSubtitles = document.getElementById('remoteSubtitles');
+        if (remoteSubtitles) {
+            remoteSubtitles.style.display = 'block';
+        }
+        
         displayRemoteSubtitles(data.prediction);
         addToTranscript(data.prediction.sign);
     });
@@ -442,17 +480,6 @@ async function startHandDetection() {
     
     detectFrame();
 }
-
-// Initialize MediaPipe when page loads
-window.addEventListener('load', () => {
-    setTimeout(() => {
-        if (typeof Hands !== 'undefined') {
-            initializeMediaPipe();
-        } else {
-            console.error('MediaPipe Hands library not loaded');
-        }
-    }, 2000);
-});
 
 // ============================================================
 // ML MODEL INTEGRATION
@@ -751,5 +778,73 @@ window.switchAPIMode = function(mode) {
         console.log('Endpoint:', getAPIUrl());
     } else {
         console.error('❌ Invalid mode. Use: MOCK, LOCAL, or PRODUCTION');
+    }
+};
+
+// ============================================
+// CONTROL BUTTON FUNCTIONS
+// ============================================
+
+window.toggleMic = function() {
+    isMicMuted = !isMicMuted;
+    const btn = document.getElementById('micBtn');
+    
+    if (localStream) {
+        localStream.getAudioTracks().forEach(track => {
+            track.enabled = !isMicMuted;
+        });
+    }
+
+    if (isMicMuted) {
+        btn.classList.add('active');
+        btn.textContent = '🔇';
+        btn.setAttribute('data-tooltip', 'Unmute Audio');
+    } else {
+        btn.classList.remove('active');
+        btn.textContent = '🎤';
+        btn.setAttribute('data-tooltip', 'Mute Audio');
+    }
+};
+
+window.toggleCamera = function() {
+    isCameraMuted = !isCameraMuted;
+    const btn = document.getElementById('cameraBtn');
+    
+    if (localStream) {
+        localStream.getVideoTracks().forEach(track => {
+            track.enabled = !isCameraMuted;
+        });
+    }
+
+    if (isCameraMuted) {
+        btn.classList.add('active');
+        btn.textContent = '📵';
+        btn.setAttribute('data-tooltip', 'Turn On Camera');
+    } else {
+        btn.classList.remove('active');
+        btn.textContent = '📹';
+        btn.setAttribute('data-tooltip', 'Turn Off Camera');
+    }
+};
+
+window.endCall = function() {
+    if (confirm('Are you sure you want to end the call?')) {
+        // Stop all tracks
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+        }
+        
+        // Close peer connection
+        if (pc) {
+            pc.close();
+        }
+        
+        // Disconnect socket
+        if (socket) {
+            socket.disconnect();
+        }
+        
+        // Redirect to start page
+        window.location.href = '/';
     }
 };
