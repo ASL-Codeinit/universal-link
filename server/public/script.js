@@ -1,32 +1,56 @@
 // ============================================================
-// USER MODE SELECTION
+// USER MODE SETUP FROM SESSION STORAGE
 // ============================================================
 
-let userMode = null; // 'signer' or 'speaker'
+// Global variables
+let userMode = 'speaker';
+let roomId = null;
+let socket = null;
 
-function selectMode(mode) {
-    userMode = mode;
+// Wait for DOM to be fully loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Get user mode from sessionStorage (set in start.html)
+    userMode = sessionStorage.getItem('userMode') || 'speaker';
+    console.log('User mode:', userMode);
+
+    // Get or create room ID
+    roomId = getRoomFromURL();
+    if (!roomId) {
+        roomId = generateRoomID();
+        setRoomInURL(roomId);
+    }
+
+    // Display room ID
+    const roomIdDisplay = document.getElementById('roomIdDisplay');
+    if (roomIdDisplay) {
+        roomIdDisplay.textContent = roomId;
+    }
+
+    // Initialize socket connection
+    socket = io();
     
-    // Update UI
-    document.getElementById('signerMode').classList.remove('selected');
-    document.getElementById('speakerMode').classList.remove('selected');
+    // Join the room
+    socket.emit('join-room', roomId);
+    console.log('Joined room:', roomId);
     
-    if (mode === 'signer') {
-        document.getElementById('signerMode').classList.add('selected');
-        updateStatus('You selected: Sign Language User - Your signs will be interpreted');
-        
-        // Show detection indicator on local video
-        document.getElementById('localDetection').style.display = 'flex';
+    // Set up socket event handlers
+    setupSocketHandlers();
+
+    // Show appropriate UI based on mode
+    const localDetection = document.getElementById('localDetection');
+    const localSubtitles = document.getElementById('localSubtitles');
+    const remoteSubtitles = document.getElementById('remoteSubtitles');
+    
+    if (userMode === 'signer') {
+        if (localDetection) localDetection.style.display = 'flex';
+        if (localSubtitles) localSubtitles.style.display = 'block';
     } else {
-        document.getElementById('speakerMode').classList.add('selected');
-        updateStatus('You selected: Verbal Speaker - You\'ll see subtitles of signs');
-        
-        // Show subtitles on remote video
-        document.getElementById('remoteSubtitles').style.display = 'block';
+        if (remoteSubtitles) remoteSubtitles.style.display = 'block';
     }
     
-    console.log('User mode set to:', mode);
-}
+    // Initialize media after DOM is ready
+    initializeMedia();
+});
 
 // --- ROOM ID MANAGEMENT ---
 function generateRoomID() {
@@ -44,35 +68,38 @@ function setRoomInURL(roomId) {
     window.history.replaceState({}, '', newUrl);
 }
 
-// Get or create room ID
-let roomId = getRoomFromURL();
-if (!roomId) {
-    roomId = generateRoomID();
-    setRoomInURL(roomId);
-}
-
-// Display room ID
-document.getElementById('roomIdDisplay').textContent = roomId;
-
 // Copy link function
 function copyRoomLink() {
     const link = window.location.href;
     navigator.clipboard.writeText(link).then(() => {
-        const btn = document.querySelector('.copy-btn');
-        const originalText = btn.textContent;
-        btn.textContent = '✅ Copied!';
-        setTimeout(() => {
-            btn.textContent = originalText;
-        }, 2000);
+        const btn = document.querySelector('.copy-btn-small');
+        if (btn) {
+            const originalText = btn.textContent;
+            btn.textContent = '✅ Copied!';
+            setTimeout(() => {
+                btn.textContent = originalText;
+            }, 2000);
+        }
     });
 }
 
-// --- SOCKET.IO CONNECTION ---
-const socket = io();
+// Update status function
+function updateStatus(message) {
+    const statusText = document.getElementById('statusText');
+    if (statusText) {
+        statusText.textContent = message;
+    }
+    console.log('Status:', message);
+}
 
-// Join the room
-socket.emit('join-room', roomId);
-updateStatus('Connected to server. Room: ' + roomId);
+// Update status function
+function updateStatus(message) {
+    const statusText = document.getElementById('statusText');
+    if (statusText) {
+        statusText.textContent = message;
+    }
+    console.log('Status:', message);
+}
 
 // --- WEBRTC SETUP ---
 const configuration = {
@@ -112,14 +139,16 @@ async function initializeMedia() {
         });
         
         updateStatus('Camera and microphone ready!');
+        
+        // Auto-start call
+        setTimeout(() => startCall(), 1000);
     } catch (error) {
         console.error('Error accessing media devices:', error);
         updateStatus('Error: Could not access camera/microphone');
     }
 }
 
-// Initialize media on page load
-initializeMedia();
+// NOTE: initializeMedia() is called from DOMContentLoaded listener above
 
 // --- WEBRTC EVENT HANDLERS ---
 
@@ -130,6 +159,12 @@ pc.ontrack = (event) => {
     if (remoteVideo.srcObject !== event.streams[0]) {
         remoteVideo.srcObject = event.streams[0];
         updateStatus('Connected! Video call active.');
+        
+        // Hide status message
+        const statusMsg = document.getElementById('statusMessage');
+        if (statusMsg) {
+            statusMsg.style.display = 'none';
+        }
     }
 };
 
@@ -158,18 +193,12 @@ pc.onconnectionstatechange = () => {
 
 // --- START CALL FUNCTION ---
 async function startCall() {
-    if (!userMode) {
-        alert('Please select your communication mode first!');
-        return;
-    }
-    
     if (isCallStarted) {
         updateStatus('Call already started!');
         return;
     }
     
     isCallStarted = true;
-    document.getElementById('startCallBtn').disabled = true;
     
     // Send mode to other user
     socket.emit('user-mode', {
@@ -193,92 +222,80 @@ async function startCall() {
         console.error('Error creating offer:', error);
         updateStatus('Error starting call');
         isCallStarted = false;
-        document.getElementById('startCallBtn').disabled = false;
     }
 }
 
 // --- SOCKET EVENT HANDLERS ---
+function setupSocketHandlers() {
+    // When another user connects to the room
+    socket.on('user-connected', (userId) => {
+        console.log('User connected to room:', userId);
+        updateStatus('Friend joined the room!');
+    });
 
-// When another user connects to the room
-socket.on('user-connected', (userId) => {
-    console.log('User connected to room:', userId);
-    updateStatus('Friend joined the room!');
-});
-
-// Receive remote user's mode
-socket.on('remote-user-mode', (data) => {
-    console.log('Remote user mode:', data.mode);
-    
-    // If they're a signer, we should show subtitles
-    if (data.mode === 'signer' && userMode === 'speaker') {
-        document.getElementById('remoteSubtitles').style.display = 'block';
-    }
-});
-
-// Handle incoming offer
-socket.on('offer', async (data) => {
-    console.log('Received offer from:', data.senderId);
-    
-    try {
-        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-        updateStatus('Received offer. Creating answer...');
+    // Receive remote user's mode
+    socket.on('remote-user-mode', (data) => {
+        console.log('Remote user mode:', data.mode);
         
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
+        // If they're a signer, we should show subtitles
+        if (data.mode === 'signer' && userMode === 'speaker') {
+            const remoteSubtitles = document.getElementById('remoteSubtitles');
+            if (remoteSubtitles) remoteSubtitles.style.display = 'block';
+        }
+    });
+
+    // Handle incoming offer
+    socket.on('offer', async (data) => {
+        console.log('Received offer from:', data.senderId);
         
-        socket.emit('answer', {
-            answer: answer,
-            roomId: roomId
-        });
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+            updateStatus('Received offer. Creating answer...');
+            
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            
+            socket.emit('answer', {
+                answer: answer,
+                roomId: roomId
+            });
+            
+            updateStatus('Answer sent. Establishing connection...');
+        } catch (error) {
+            console.error('Error handling offer:', error);
+            updateStatus('Error processing offer');
+        }
+    });
+
+    // Handle incoming answer
+    socket.on('answer', async (data) => {
+        console.log('Received answer from:', data.senderId);
         
-        updateStatus('Answer sent. Establishing connection...');
-    } catch (error) {
-        console.error('Error handling offer:', error);
-        updateStatus('Error processing offer');
-    }
-});
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+            updateStatus('Answer received. Connecting...');
+        } catch (error) {
+            console.error('Error handling answer:', error);
+            updateStatus('Error processing answer');
+        }
+    });
 
-// Handle incoming answer
-socket.on('answer', async (data) => {
-    console.log('Received answer from:', data.senderId);
-    
-    try {
-        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-        updateStatus('Answer received. Connecting...');
-    } catch (error) {
-        console.error('Error handling answer:', error);
-        updateStatus('Error processing answer');
-    }
-});
+    // Handle incoming ICE candidates
+    socket.on('ice-candidate', async (candidate) => {
+        try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            console.log('Added ICE candidate');
+        } catch (error) {
+            console.error('Error adding ICE candidate:', error);
+        }
+    });
 
-// Handle incoming ICE candidates
-socket.on('ice-candidate', async (candidate) => {
-    try {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        console.log('Added ICE candidate');
-    } catch (error) {
-        console.error('Error adding ICE candidate:', error);
-    }
-});
-
-// ============================================
-// RECEIVE REMOTE USER'S SIGN PREDICTION
-// ============================================
-
-socket.on('remote-sign-prediction', (data) => {
-    console.log('📥 Received sign from remote user:', data.prediction);
-    
-    // Only display if we're a speaker (we want to see their signs)
-    if (userMode === 'speaker') {
+    // Handle remote sign predictions
+    socket.on('remote-sign-prediction', (data) => {
+        console.log('Received remote sign prediction:', data.prediction);
         displayRemoteSubtitles(data.prediction);
         addToTranscript(data.prediction.sign);
-    }
-});
-
-// --- UTILITY FUNCTIONS ---
-function updateStatus(message) {
-    document.getElementById('status').textContent = message;
-    console.log('Status:', message);
+    });
 }
 
 // ============================================================
@@ -674,17 +691,17 @@ function addToTranscript(sign) {
 }
 
 function updateTranscriptDisplay() {
-    const content = document.getElementById('transcriptContent');
+    const content = document.getElementById('chatMessages');
     
     if (transcript.length === 0) {
-        content.innerHTML = '<p style="text-align: center; color: #999;">Sign language translations will appear here...</p>';
+        content.innerHTML = '<div class="chat-empty">Sign language translations will appear here...</div>';
         return;
     }
     
     content.innerHTML = transcript.slice(-20).map(entry => `
-        <div class="transcript-entry">
-            <strong>${entry.sign}</strong>
-            <span class="timestamp">${entry.timestamp}</span>
+        <div class="chat-message">
+            <div class="chat-message-sign">${entry.sign}</div>
+            <div class="chat-message-time">${entry.timestamp}</div>
         </div>
     `).join('');
     

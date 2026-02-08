@@ -1,0 +1,545 @@
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SignLink | Welcome</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; color: #333; }
+        .card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.3); text-align: center; width: 380px; }
+        h1 { color: #667eea; margin-bottom: 5px; }
+        p { color: #666; margin-bottom: 30px; font-size: 14px; }
+        .btn { width: 100%; padding: 15px; margin: 10px 0; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 16px; transition: 0.3s; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-primary:hover { background: #5a67d8; transform: translateY(-2px); }
+        .btn-secondary { background: #f0f4f8; color: #667eea; border: 2px solid transparent; }
+        .btn-secondary:hover { border-color: #667eea; }
+        input { width: 100%; padding: 15px; margin: 10px 0; border: 2px solid #ddd; border-radius: 10px; box-sizing: border-box; text-align: center; text-transform: uppercase; font-size: 18px; letter-spacing: 2px; outline: none; }
+        input:focus { border-color: #667eea; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🤟 SignLink</h1>
+        <p>Enter a meeting or start a new one</p>
+        
+        <div id="mainOptions">
+            <button class="btn btn-primary" onclick="createRoom()">Start New Meeting</button>
+            <button class="btn btn-secondary" onclick="showJoin()">Join with Passkey</button>
+        </div>
+
+        <div id="joinUI" style="display:none;">
+            <input type="text" id="passkeyInput" placeholder="ENTER KEY">
+            <button class="btn btn-primary" onclick="joinRoom()">Connect Now</button>
+            <button class="btn btn-secondary" style="font-size: 12px;" onclick="location.reload()">← Back</button>
+        </div>
+    </div>
+
+    <script>
+        // 1. Generate a clean 6-character room ID
+        function createRoom() {
+            const room = Math.random().toString(36).substring(2, 8).toUpperCase();
+            // This redirects to your server's new /video route
+            window.location.href = `/video?room=${room}`;
+        }
+
+        function showJoin() {
+            document.getElementById('mainOptions').style.display = 'none';
+            document.getElementById('joinUI').style.display = 'block';
+            document.getElementById('passkeyInput').focus();
+        }
+
+        // 2. Join a room using the typed passkey
+        function joinRoom() {
+            const room = document.getElementById('passkeyInput').value.trim().toUpperCase();
+            if (room) {
+                window.location.href = `/video?room=${room}`;
+            } else {
+                alert("Please enter a valid passkey!");
+            }
+        }
+    </script>
+</body>
+</html> -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SignLink | Welcome</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body { 
+            font-family: 'Poppins', sans-serif;
+            background: #0f0f0f;
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 100vh;
+            color: #ffffff;
+            padding: 20px;
+        }
+
+        /* Animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(76, 175, 80, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(76, 175, 80, 0.08) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .card { 
+            background: rgba(26, 26, 26, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 50px 40px;
+            border-radius: 24px;
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.4),
+                0 0 0 1px rgba(255, 255, 255, 0.05);
+            text-align: center;
+            animation: fadeInUp 0.6s ease-out;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo {
+            font-size: 48px;
+            margin-bottom: 10px;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        h1 { 
+            color: #4CAF50;
+            margin-bottom: 8px;
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .subtitle { 
+            color: #888;
+            margin-bottom: 40px;
+            font-size: 15px;
+            font-weight: 400;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            color: #b0b0b0;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input { 
+            width: 100%;
+            padding: 16px 20px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            background: rgba(30, 30, 30, 0.6);
+            color: white;
+            border-radius: 12px;
+            font-size: 16px;
+            font-family: 'Poppins', sans-serif;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        input:focus { 
+            border-color: #4CAF50;
+            background: rgba(40, 40, 40, 0.8);
+            box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.1);
+        }
+
+        input::placeholder { 
+            color: #555;
+        }
+
+        input.passkey-input {
+            text-align: center;
+            text-transform: uppercase;
+            font-size: 20px;
+            letter-spacing: 4px;
+            font-weight: 600;
+        }
+
+        /* Mode Selection */
+        .mode-selection {
+            margin-bottom: 24px;
+        }
+
+        .mode-toggle {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .mode-option {
+            flex: 1;
+            padding: 16px;
+            background: rgba(30, 30, 30, 0.6);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .mode-option:hover {
+            border-color: #4CAF50;
+            background: rgba(40, 40, 40, 0.8);
+            transform: translateY(-2px);
+        }
+
+        .mode-option.selected {
+            border-color: #4CAF50;
+            background: rgba(76, 175, 80, 0.15);
+            box-shadow: 0 0 20px rgba(76, 175, 80, 0.2);
+        }
+
+        .mode-option .icon {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .mode-option .label {
+            font-size: 13px;
+            color: #b0b0b0;
+            font-weight: 500;
+        }
+
+        .mode-option.selected .label {
+            color: #4CAF50;
+        }
+
+        .btn { 
+            width: 100%;
+            padding: 16px;
+            margin: 12px 0;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 16px;
+            font-family: 'Poppins', sans-serif;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .btn:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .btn span {
+            position: relative;
+            z-index: 1;
+        }
+
+        .btn-primary { 
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            box-shadow: 0 4px 16px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn-primary:hover { 
+            box-shadow: 0 6px 24px rgba(76, 175, 80, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary { 
+            background: rgba(30, 30, 30, 0.6);
+            color: #4CAF50;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-secondary:hover { 
+            border-color: #4CAF50;
+            background: rgba(40, 40, 40, 0.8);
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            margin: 32px 0;
+            color: #555;
+            font-size: 13px;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .divider span {
+            padding: 0 16px;
+        }
+
+        .back-link {
+            color: #888;
+            font-size: 14px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: color 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 16px;
+        }
+
+        .back-link:hover {
+            color: #4CAF50;
+        }
+
+        #joinUI {
+            display: none;
+        }
+
+        .error-message {
+            color: #ff5252;
+            font-size: 13px;
+            margin-top: 8px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="logo">🤟</div>
+            <h1>SignLink</h1>
+            <p class="subtitle">Breaking barriers with sign language</p>
+            
+            <div id="mainOptions">
+                <div class="form-group">
+                    <label for="nameInput">Your Name</label>
+                    <input 
+                        type="text" 
+                        id="nameInput" 
+                        placeholder="Enter your name"
+                        autocomplete="name"
+                    >
+                    <div class="error-message" id="nameError">Please enter your name</div>
+                </div>
+
+                <div class="form-group mode-selection">
+                    <label>Communication Preference</label>
+                    <div class="mode-toggle">
+                        <div class="mode-option" id="needInterpreter" onclick="selectMode('signer')">
+                            <div class="icon">🤟</div>
+                            <div class="label">Need Interpreter</div>
+                        </div>
+                        <div class="mode-option selected" id="noInterpreter" onclick="selectMode('speaker')">
+                            <div class="icon">🗣️</div>
+                            <div class="label">No Interpreter</div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" onclick="createRoom()">
+                    <span>Start New Meeting</span>
+                </button>
+
+                <div class="divider"><span>OR</span></div>
+
+                <button class="btn btn-secondary" onclick="showJoin()">
+                    <span>Join with Passkey</span>
+                </button>
+            </div>
+
+            <div id="joinUI">
+                <div class="form-group">
+                    <label for="nameInputJoin">Your Name</label>
+                    <input 
+                        type="text" 
+                        id="nameInputJoin" 
+                        placeholder="Enter your name"
+                        autocomplete="name"
+                    >
+                    <div class="error-message" id="nameErrorJoin">Please enter your name</div>
+                </div>
+
+                <div class="form-group mode-selection">
+                    <label>Communication Preference</label>
+                    <div class="mode-toggle">
+                        <div class="mode-option" id="needInterpreterJoin" onclick="selectModeJoin('signer')">
+                            <div class="icon">🤟</div>
+                            <div class="label">Need Interpreter</div>
+                        </div>
+                        <div class="mode-option selected" id="noInterpreterJoin" onclick="selectModeJoin('speaker')">
+                            <div class="icon">🗣️</div>
+                            <div class="label">No Interpreter</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="passkeyInput">Meeting Passkey</label>
+                    <input 
+                        type="text" 
+                        id="passkeyInput" 
+                        class="passkey-input"
+                        placeholder="ABC123"
+                        maxlength="6"
+                    >
+                    <div class="error-message" id="passkeyError">Please enter a valid passkey</div>
+                </div>
+
+                <button class="btn btn-primary" onclick="joinRoom()">
+                    <span>Join Meeting</span>
+                </button>
+
+                <a class="back-link" onclick="showMain()">
+                    ← Back to main
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedMode = 'speaker'; // Default: no interpreter needed
+        let selectedModeJoin = 'speaker';
+
+        function selectMode(mode) {
+            selectedMode = mode;
+            document.getElementById('needInterpreter').classList.toggle('selected', mode === 'signer');
+            document.getElementById('noInterpreter').classList.toggle('selected', mode === 'speaker');
+        }
+
+        function selectModeJoin(mode) {
+            selectedModeJoin = mode;
+            document.getElementById('needInterpreterJoin').classList.toggle('selected', mode === 'signer');
+            document.getElementById('noInterpreterJoin').classList.toggle('selected', mode === 'speaker');
+        }
+
+        function createRoom() {
+            const name = document.getElementById('nameInput').value.trim();
+            const errorEl = document.getElementById('nameError');
+            
+            if (!name) {
+                errorEl.style.display = 'block';
+                document.getElementById('nameInput').focus();
+                return;
+            }
+            
+            errorEl.style.display = 'none';
+            const room = Math.random().toString(36).substring(2, 8).toUpperCase();
+            
+            // Store user data in sessionStorage
+            sessionStorage.setItem('userName', name);
+            sessionStorage.setItem('userMode', selectedMode);
+            
+            window.location.href = `/video?room=${room}`;
+        }
+
+        function showJoin() {
+            document.getElementById('mainOptions').style.display = 'none';
+            document.getElementById('joinUI').style.display = 'block';
+            document.getElementById('nameInputJoin').focus();
+        }
+
+        function showMain() {
+            document.getElementById('mainOptions').style.display = 'block';
+            document.getElementById('joinUI').style.display = 'none';
+        }
+
+        function joinRoom() {
+            const name = document.getElementById('nameInputJoin').value.trim();
+            const room = document.getElementById('passkeyInput').value.trim().toUpperCase();
+            
+            let hasError = false;
+            
+            if (!name) {
+                document.getElementById('nameErrorJoin').style.display = 'block';
+                hasError = true;
+            } else {
+                document.getElementById('nameErrorJoin').style.display = 'none';
+            }
+            
+            if (!room || room.length < 6) {
+                document.getElementById('passkeyError').style.display = 'block';
+                hasError = true;
+            } else {
+                document.getElementById('passkeyError').style.display = 'none';
+            }
+            
+            if (hasError) return;
+            
+            // Store user data in sessionStorage
+            sessionStorage.setItem('userName', name);
+            sessionStorage.setItem('userMode', selectedModeJoin);
+            
+            window.location.href = `/video?room=${room}`;
+        }
+
+        // Enter key support
+        document.getElementById('nameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') createRoom();
+        });
+
+        document.getElementById('passkeyInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') joinRoom();
+        });
+    </script>
+</body>
+</html>
