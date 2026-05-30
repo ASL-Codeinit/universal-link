@@ -374,50 +374,57 @@ function onHandsDetected(results) {
     const canvas = document.getElementById('localCanvas');
     const ctx = canvas.getContext('2d');
     
-    // Match canvas size to video size
     const video = document.getElementById('localVideo');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    
-    // Clear previous drawings
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Draw the hand landmarks if detected
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         
+        // always draw skeleton for all detected hands
         for (let i = 0; i < results.multiHandLandmarks.length; i++) {
             const landmarks = results.multiHandLandmarks[i];
-            const handedness = results.multiHandedness[i].label;
-            
-            // Draw connections between landmarks (ALWAYS draw, regardless of mode)
             drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
-                color: '#00FF00',
-                lineWidth: 2
+                color: '#00FF00', lineWidth: 2
             });
-            
-            // Draw the landmark points (ALWAYS draw, regardless of mode)
             drawLandmarks(ctx, landmarks, {
-                color: '#FF0000',
-                lineWidth: 1,
-                radius: 3
+                color: '#FF0000', lineWidth: 1, radius: 3
             });
-            
-            // Only process for interpretation if user is a signer
-            if (userMode === 'signer') {
-                // Update detection indicator
-                const indicator = document.getElementById('localDetection');
-                indicator.classList.remove('inactive');
-                indicator.innerHTML = '<span class="pulse-dot"></span><span>Detecting ✓</span>';
-                
-                // Extract landmark data
-                const landmarkData = extractLandmarkData(landmarks, handedness);
-                
-                // Send to ML model
-                sendToMLModel(landmarkData);
-            }
         }
+
+        // only process for ML if user is signer
+        if (userMode === 'signer') {
+            const indicator = document.getElementById('localDetection');
+            indicator.classList.remove('inactive');
+            indicator.innerHTML = '<span class="pulse-dot"></span><span>Detecting ✓</span>';
+
+            // build 136 feature array — left hand + right hand
+            let leftFeatures  = new Array(68).fill(0);  // default zeros
+            let rightFeatures = new Array(68).fill(0);  // default zeros
+
+            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                const landmarks  = results.multiHandLandmarks[i];
+                const handedness = results.multiHandedness[i].label;
+                const features   = extractRobustFeatures(landmarks);
+
+                if (handedness === 'Left') {
+                    leftFeatures = features;
+                } else if (handedness === 'Right') {
+                    rightFeatures = features;
+                }
+            }
+
+            // combine both hands into 136 values
+            const allFeatures = [...leftFeatures, ...rightFeatures];
+
+            // send to ML model
+            sendToMLModel({
+                flatArray: allFeatures,
+                handedness: 'Both'
+            });
+        }
+
     } else {
-        // No hands detected
         if (userMode === 'signer') {
             const indicator = document.getElementById('localDetection');
             indicator.classList.add('inactive');
@@ -427,32 +434,41 @@ function onHandsDetected(results) {
 }
 
 // Extract landmark data
-function extractLandmarkData(landmarks, handedness) {
-    // Get wrist as reference point
+// Extract robust features matching Python training format
+function extractRobustFeatures(landmarks) {
+    // step 1 - center on wrist
     const wrist = landmarks[0];
-    
-    const data = {
-        handedness: handedness,
-        landmarks: [],
-        flatArray: []
-    };
-    
-    for (let i = 0; i < landmarks.length; i++) {
-        const point = landmarks[i];
-        data.landmarks.push({
-            id: i,
-            x: point.x - wrist.x,  // CENTERED
-            y: point.y - wrist.y,  //  CENTERED
-            z: point.z - wrist.z   //  CENTERED
-        });
-        data.flatArray.push(
-            point.x - wrist.x,  // CENTERED
-            point.y - wrist.y,  // CENTERED
-            point.z - wrist.z   // CENTERED
-        );
+    let centered = landmarks.map(lm => ({
+        x: lm.x - wrist.x,
+        y: lm.y - wrist.y,
+        z: lm.z - wrist.z
+    }));
+
+    // step 2 - find max value (normalise by hand size)
+    let maxVal = Math.max(...centered.flatMap(p => 
+        [Math.abs(p.x), Math.abs(p.y), Math.abs(p.z)]
+    ));
+    if (maxVal === 0) maxVal = 1e-5;
+
+    // step 3 - divide everything by max
+    let normalised = centered.map(p => ({
+        x: p.x / maxVal,
+        y: p.y / maxVal,
+        z: p.z / maxVal
+    }));
+
+    // step 4 - flatten to 63 values
+    let features = normalised.flatMap(p => [p.x, p.y, p.z]);
+
+    // step 5 - add 5 fingertip distances (total 68)
+    const tipIds = [4, 8, 12, 16, 20];
+    for (const tipId of tipIds) {
+        const tip = normalised[tipId];
+        const distance = Math.sqrt(tip.x**2 + tip.y**2 + tip.z**2);
+        features.push(distance);
     }
-    
-    return data;
+
+    return features; // 68 values per hand
 }
 
 // Process video frames continuously
