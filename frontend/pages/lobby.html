@@ -1,0 +1,195 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>SignLink | Welcome</title>
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap"
+      rel="stylesheet">
+    <link rel="stylesheet" href="../css/lobby.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="logo">🤟</div>
+            <h1>SignLink</h1>
+            <p class="subtitle">Breaking barriers with sign language</p>
+            
+            <div id="mainOptions">
+                <div class="form-group">
+                    <label for="nameInput">Your Name</label>
+                    <input 
+                        type="text" 
+                        id="nameInput" 
+                        placeholder="Enter your name"
+                        autocomplete="name"
+                    >
+                    <div class="error-message" id="nameError">Please enter your name</div>
+                </div>
+
+                <div class="form-group mode-selection">
+                    <label>Communication Preference</label>
+                    <div class="mode-toggle">
+                        <div class="mode-option" id="needInterpreter" onclick="selectMode('signer')">
+                            <div class="icon">🤟</div>
+                            <div class="label">Need Interpreter</div>
+                        </div>
+                        <div class="mode-option selected" id="noInterpreter" onclick="selectMode('speaker')">
+                            <div class="icon">🗣️</div>
+                            <div class="label">No Interpreter</div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" onclick="createRoom()">
+                    <span>Start New Meeting</span>
+                </button>
+
+                <div class="divider"><span>OR</span></div>
+
+                <button class="btn btn-secondary" onclick="showJoin()">
+                    <span>Join with Passkey</span>
+                </button>
+            </div>
+
+            <div id="joinUI">
+                <div class="form-group">
+                    <label for="nameInputJoin">Your Name</label>
+                    <input 
+                        type="text" 
+                        id="nameInputJoin" 
+                        placeholder="Enter your name"
+                        autocomplete="name"
+                    >
+                    <div class="error-message" id="nameErrorJoin">Please enter your name</div>
+                </div>
+
+                <div class="form-group mode-selection">
+                    <label>Communication Preference</label>
+                    <div class="mode-toggle">
+                        <div class="mode-option" id="needInterpreterJoin" onclick="selectModeJoin('signer')">
+                            <div class="icon">🤟</div>
+                            <div class="label">Need Interpreter</div>
+                        </div>
+                        <div class="mode-option selected" id="noInterpreterJoin" onclick="selectModeJoin('speaker')">
+                            <div class="icon">🗣️</div>
+                            <div class="label">No Interpreter</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="passkeyInput">Meeting Passkey</label>
+                    <input 
+                        type="text" 
+                        id="passkeyInput" 
+                        class="passkey-input"
+                        placeholder="ABC123"
+                        maxlength="6"
+                    >
+                    <div class="error-message" id="passkeyError">Please enter a valid passkey</div>
+                </div>
+
+                <button class="btn btn-primary" onclick="joinRoom()">
+                    <span>Join Meeting</span>
+                </button>
+
+                <a class="back-link" onclick="showMain()">
+                    ← Back to main
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedMode = 'speaker'; // Default: no interpreter needed
+        let selectedModeJoin = 'speaker';
+
+        function selectMode(mode) {
+            selectedMode = mode;
+            document.getElementById('needInterpreter').classList.toggle('selected', mode === 'signer');
+            document.getElementById('noInterpreter').classList.toggle('selected', mode === 'speaker');
+        }
+
+        function selectModeJoin(mode) {
+            selectedModeJoin = mode;
+            document.getElementById('needInterpreterJoin').classList.toggle('selected', mode === 'signer');
+            document.getElementById('noInterpreterJoin').classList.toggle('selected', mode === 'speaker');
+        }
+
+        function createRoom() {
+            const name = document.getElementById('nameInput').value.trim();
+            const errorEl = document.getElementById('nameError');
+            
+            if (!name) {
+                errorEl.style.display = 'block';
+                document.getElementById('nameInput').focus();
+                return;
+            }
+            
+            errorEl.style.display = 'none';
+            const room = Math.random().toString(36).substring(2, 8).toUpperCase();
+            
+            // Store user data in sessionStorage
+            sessionStorage.setItem('userName', name);
+            sessionStorage.setItem('userMode', selectedMode);
+            
+            window.location.href = `/video?room=${room}`;
+        }
+
+        function showJoin() {
+            document.getElementById('mainOptions').style.display = 'none';
+            document.getElementById('joinUI').style.display = 'block';
+            document.getElementById('nameInputJoin').focus();
+        }
+
+        function showMain() {
+            document.getElementById('mainOptions').style.display = 'block';
+            document.getElementById('joinUI').style.display = 'none';
+        }
+
+        function joinRoom() {
+            const name = document.getElementById('nameInputJoin').value.trim();
+            const room = document.getElementById('passkeyInput').value.trim().toUpperCase();
+            
+            let hasError = false;
+            
+            if (!name) {
+                document.getElementById('nameErrorJoin').style.display = 'block';
+                hasError = true;
+            } else {
+                document.getElementById('nameErrorJoin').style.display = 'none';
+            }
+            
+            if (!room || room.length < 6) {
+                document.getElementById('passkeyError').style.display = 'block';
+                hasError = true;
+            } else {
+                document.getElementById('passkeyError').style.display = 'none';
+            }
+            
+            if (hasError) return;
+            
+            // Store user data in sessionStorage
+            sessionStorage.setItem('userName', name);
+            sessionStorage.setItem('userMode', selectedModeJoin);
+            
+            window.location.href = `/video?room=${room}`;
+        }
+
+        // Enter key support
+        document.getElementById('nameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') createRoom();
+        });
+
+        document.getElementById('passkeyInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') joinRoom();
+        });
+    </script>
+</body>
+</html>
