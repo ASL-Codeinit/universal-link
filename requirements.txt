@@ -6,3 +6,9 @@ numpy
 python-dotenv
 groq
 pydantic
+flask==3.0.0
+flask-cors==4.0.0
+joblib==1.4.2
+scikit-learn==1.5.2
+numpy==1.26.4
+gunicorn==21.2.0
