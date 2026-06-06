@@ -62,7 +62,7 @@ def predict(data: LandmarkRequest):
     handedness = data.handedness
 
     # --- THE FIX: FORCED PADDING ---
-    if len(landmarks) == 126:
+    if len(landmarks) == 136:
         # User is showing two hands. Data is already full.
         input_data = landmarks
     else:

@@ -1,3 +1,11 @@
+fastapi
+uvicorn
+joblib
+scikit-learn
+numpy
+python-dotenv
+groq
+pydantic
 flask==3.0.0
 flask-cors==4.0.0
 joblib==1.4.2
