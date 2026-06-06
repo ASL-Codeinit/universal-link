@@ -1,4 +1,4 @@
-# 🔗 Universal Link: Real-Time ASL Translation Layer
+clea# 🔗 Universal Link: Real-Time ASL Translation Layer
 
 **Universal Link** is a real-time Sign Language-to-Speech translation system. We bridge the communication gap by combining custom-trained computer vision models with **Google Gemini LLM** for sophisticated, context-aware grammar correction.
 
