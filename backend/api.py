@@ -1,78 +1,127 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from fastapi import FastAPI
+from groq import Groq
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import joblib
 import numpy as np
 import os
+from dotenv import load_dotenv
 
-app = Flask(__name__)
-CORS(app)  # Allow requests from anywhere
+load_dotenv()
+app = FastAPI()
+groq_api_key = os.getenv("GROQ_API_KEY")
+client = Groq(api_key=groq_api_key)
 
-# Load the trained model
+class GrammarRequest(BaseModel):
+    words: list[str]
+
+# Allow CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Request body schema
+class LandmarkRequest(BaseModel):
+    landmarks: list[float]
+    handedness: str
+
+# Request grammar Schema
+class GrammarRequest(BaseModel):
+    words: list[str]
+
 print("Loading ML model...")
 try:
-    model = joblib.load('asl_model.pkl')
+    model = joblib.load("asl_model.pkl")
     print("✅ Model loaded successfully!")
 except Exception as e:
     print(f"❌ Error loading model: {e}")
     model = None
 
-@app.route('/', methods=['GET'])
-def home():
-    return jsonify({
-        'status': 'ASL API is running!',
-        'endpoints': {
-            '/predict': 'POST - Send landmarks for ASL prediction',
-            '/health': 'GET - Check API health'
-        }
-    })
 
-@app.route('/predict', methods=['POST'])
-def predict():
+@app.get("/")
+def home():
+    return {
+        "status": "ASL API is running!",
+        "endpoints": {
+            "/predict": "POST - Send landmarks for ASL prediction",
+            "/health": "GET - Check API health"
+        }
+    }
+
+
+@app.post("/predict")
+def predict(data: LandmarkRequest):
     if model is None:
-        return jsonify({
-            'error': 'Model not loaded. Please check server logs.'
-        }), 500
-    
+        return {"error": "Model not loaded"}
+
+    landmarks = data.landmarks
+    handedness = data.handedness
+
+    # --- THE FIX: FORCED PADDING ---
+    if len(landmarks) == 126:
+        # User is showing two hands. Data is already full.
+        input_data = landmarks
+    else:
+        # Safeguard against corrupted data packets
+        return {"error": f"Data length {len(landmarks)} is invalid. Need 63 or 126."}
+
+    # Convert to numpy and reshape for a single prediction
+    landmarks_array = np.array(input_data).reshape(1, -1)
+
     try:
-        # Get data from frontend
-        data = request.get_json()
-        landmarks = data.get('landmarks')  # Array of 63 numbers
-        handedness = data.get('handedness')  # "Left" or "Right"
-        
-        if not landmarks or len(landmarks) != 63:
-            return jsonify({
-                'error': 'Invalid landmarks data. Expected 63 values.'
-            }), 400
-        
-        # Convert to numpy array
-        landmarks_array = np.array(landmarks).reshape(1, -1)
-        
-        # Predict
+        # Predict the class (e.g., 'A', 'B', 'Hello')
         prediction = model.predict(landmarks_array)[0]
+        
+        # Get the probability to show how sure the model is
         probabilities = model.predict_proba(landmarks_array)
         confidence = float(np.max(probabilities))
-        
-        # Return prediction
-        return jsonify({
-            'sign': prediction,
-            'confidence': confidence,
-            'handedness': handedness
-        })
-    
+
+        return {
+            "sign": str(prediction),
+            "confidence": confidence,
+            "handedness": handedness,
+            "input_size": len(input_data) # Useful for debugging
+        }
     except Exception as e:
-        print(f"Error during prediction: {str(e)}")
-        return jsonify({
-            'error': str(e)
-        }), 500
+        return {"error": f"Prediction failed: {str(e)}"}
 
-@app.route('/health', methods=['GET'])
+@app.get("/health")
 def health():
-    return jsonify({
-        'status': 'healthy',
-        'model_loaded': model is not None
-    })
+    return {
+        "status": "healthy",
+        "model_loaded": model is not None
+    }
 
-if __name__ == '__main__':
-    # Use PORT from environment variable (Render provides this)
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+@app.post("/fix-grammar")
+async def fix_grammar(data: GrammarRequest):
+    if not data.words:
+        return {"sentence": ""}
+    
+    raw_text = " ".join(data.words)
+    
+    try:
+        # Llama 3.3 70B is incredibly fast on Groq
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a professional Sign Language interpreter. Convert the following list of signs into a single, natural, and grammatically correct English sentence. Do not add extra commentary, only return the sentence."
+                },
+                {
+                    "role": "user",
+                    "content": f"Signs: {raw_text}"
+                }
+            ],
+            model="llama-3.3-70b-versatile",
+        )
+        
+        # Extract the text response
+        corrected_sentence = chat_completion.choices[0].message.content
+        return {"sentence": corrected_sentence.strip()}
+
+    except Exception as e:
+        return {"error": str(e), "fallback": raw_text}
