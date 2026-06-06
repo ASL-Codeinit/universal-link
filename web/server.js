@@ -14,16 +14,16 @@ const io = new Server(server, {
     }
 });
 
-// Serve your HTML/JS files from the 'public' folder
-app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+// Serve your HTML/JS files from the 'frontend' folder
+app.use(express.static(path.join(__dirname, '../frontend'), { index: false }));
 
 // Now these routes will finally work:
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'start.html'));
+    res.sendFile(path.join(__dirname, '../frontend', 'start.html'));
 });
 
 app.get('/video', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, '../frontend', 'index.html'));
 });
 
 io.on('connection', (socket) => {

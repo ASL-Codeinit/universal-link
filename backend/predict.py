@@ -21,7 +21,7 @@ except Exception as e:
 
 # 🟢 FIX 1: Open the camera BEFORE loading MediaPipe to prevent background deadlock hangs
 print("🎬 Initializing webcam hardware...")
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 

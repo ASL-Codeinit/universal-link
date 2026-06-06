@@ -504,7 +504,7 @@ async function startHandDetection() {
 // 🔥 UPDATED API CONFIGURATION
 const API_CONFIG = {
     MOCK_API: 'https://jsonplaceholder.typicode.com/posts',
-    LOCAL_API: 'http://localhost:5000/predict',
+    LOCAL_API: 'http://localhost:8000/predict',
     
     // 👇 REPLACE THIS WITH YOUR ACTUAL RENDER URL AFTER DEPLOYMENT
     PRODUCTION_API: 'https://your-app-name.onrender.com/predict',
