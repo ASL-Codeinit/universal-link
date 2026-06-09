@@ -6,14 +6,12 @@ import joblib
 import numpy as np
 import os
 from dotenv import load_dotenv
+from typing import Optional
 
 load_dotenv()
 app = FastAPI()
 groq_api_key = os.getenv("GROQ_API_KEY")
 client = Groq(api_key=groq_api_key)
-
-class GrammarRequest(BaseModel):
-    words: list[str]
 
 # Allow CORS
 app.add_middleware(
@@ -27,7 +25,8 @@ app.add_middleware(
 # Request body schema
 class LandmarkRequest(BaseModel):
     landmarks: list[float]
-    handedness: str
+    handedness: list[str]
+    timestamp: Optional[int] = None
 
 # Request grammar Schema
 class GrammarRequest(BaseModel):
@@ -35,8 +34,9 @@ class GrammarRequest(BaseModel):
 
 print("Loading ML model...")
 try:
-    model = joblib.load("asl_model.pkl")
+    model = joblib.load('../training/asl_model.pkl')
     print("✅ Model loaded successfully!")
+    print("Expected features:", model.n_features_in_)
 except Exception as e:
     print(f"❌ Error loading model: {e}")
     model = None
@@ -62,9 +62,14 @@ def predict(data: LandmarkRequest):
     handedness = data.handedness
 
     # --- THE FIX: FORCED PADDING ---
-    if len(landmarks) == 126:
+
+    if len(landmarks) == 136:
         # User is showing two hands. Data is already full.
         input_data = landmarks
+    elif len(landmarks) == 68:
+        # Pad missing second hand
+        input_data = landmarks + [0.0] * 68
+
     else:
         # Safeguard against corrupted data packets
         return {"error": f"Data length {len(landmarks)} is invalid. Need 63 or 126."}

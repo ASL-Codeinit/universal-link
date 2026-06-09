@@ -22,6 +22,9 @@ except Exception as e:
 # 🟢 FIX 1: Open the camera BEFORE loading MediaPipe to prevent background deadlock hangs
 print("🎬 Initializing webcam hardware...")
 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+print("width=",width,"height=",height)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
@@ -48,7 +51,7 @@ def extract_robust_features(hand_landmarks):
         tip_coord = normalized_coords[tip_id]
         distance = float(np.linalg.norm(tip_coord))
         flattened_features.append(distance)
-        
+    print(flattened_features)
     return flattened_features # Returns 68 features per hand
 
 # 4. Text Accumulation & Auto-Stack State

@@ -33,89 +33,71 @@ app.get('/video', (req, res) => {
 // =====================
 
 io.on('connection', (socket) => {
-
     console.log(`User Connected: ${socket.id}`);
 
     socket.on('join-room', (roomId) => {
-
         socket.join(roomId);
+        console.log(`Socket ${socket.id} joined room ${roomId}`);
 
-        console.log(
-            `Socket ${socket.id} joined room ${roomId}`
-        );
-
-        const clients =
-            Array.from(io.sockets.adapter.rooms.get(roomId) || []);
+        const clients = Array.from(io.sockets.adapter.rooms.get(roomId) || []);
 
         if (clients.length > 1) {
-
-            socket.to(roomId).emit(
-                'user-connected',
-                socket.id
-            );
+            socket.to(roomId).emit('user-connected', socket.id);
         }
+    });
+
+    // --- NEW: Handle Sharing User Mode ('signer' vs 'speaker') ---
+    socket.on('user-mode', (data) => {
+        socket.to(data.roomId).emit('remote-user-mode', {
+            senderId: socket.id,
+            mode: data.mode
+        });
+    });
+
+    socket.on('send-sentence', (data) => {
+        // Relays the completed sentence straight to everyone else in that room
+        socket.to(data.room).emit('receive-sentence', { sentence: data.sentence });
     });
 
     // WebRTC Offer
     socket.on('offer', ({ roomId, offer }) => {
-
         socket.to(roomId).emit('offer', {
             offer,
             sender: socket.id
         });
-
     });
 
     // WebRTC Answer
     socket.on('answer', ({ roomId, answer }) => {
-
         socket.to(roomId).emit('answer', {
             answer,
             sender: socket.id
         });
-
     });
 
     // ICE Candidates
     socket.on('ice-candidate', ({ roomId, candidate }) => {
-
         socket.to(roomId).emit('ice-candidate', {
             candidate,
             sender: socket.id
         });
-
     });
 
-    // Sign Predictions
-    socket.on('sign-prediction', (data) => {
-
-        socket.to(data.roomId).emit(
-            'sign-prediction',
-            data
-        );
-
+    // --- FIX: Sign Predictions ---
+    socket.on('remote-sign-prediction', (data) => {
+        // Change event string to 'remote-sign-prediction' to match your client listener!
+        socket.to(data.roomId).emit('remote-sign-prediction', data);
     });
 
     socket.on('disconnect', () => {
-
-        console.log(
-            `User Disconnected: ${socket.id}`
-        );
-
-        socket.broadcast.emit(
-            'user-disconnected',
-            socket.id
-        );
-
+        console.log(`User Disconnected: ${socket.id}`);
+        socket.broadcast.emit('user-disconnected', socket.id);
     });
-
 });
 
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
-
     console.log('🚀 ASL Video Call Server Running');
     console.log(`📡 Signaling Server: http://localhost:${PORT}`);
-
 });
