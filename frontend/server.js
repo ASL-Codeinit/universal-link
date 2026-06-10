@@ -79,12 +79,23 @@ io.on('connection', (socket) => {
     // --- SIGN LANGUAGE PREDICTION RELAY ---
     // Relay sign predictions to the other user
     socket.on('sign-prediction', (payload) => {
-        // payload: { roomId, prediction: { sign, confidence, handedness } }
+        // payload: { roomId, prediction: { sign, confidence, handedness }, draftSentence? }
         console.log(`🤟 Sign detected in room ${payload.roomId}: ${payload.prediction.sign} (${(payload.prediction.confidence * 100).toFixed(0)}%)`);
         
         // Send to everyone ELSE in the room (not the sender)
         socket.to(payload.roomId).emit('remote-sign-prediction', {
             prediction: payload.prediction,
+            draftSentence: payload.draftSentence,
+            senderId: socket.id
+        });
+    });
+
+    // --- TRANSCRIPT / SENTENCE RELAY ---
+    socket.on('send-sentence', (payload) => {
+        // payload: { roomId, sentence }
+        console.log(`📝 Sentence from ${socket.id} in room ${payload.roomId}: ${payload.sentence}`);
+        socket.to(payload.roomId).emit('receive-sentence', {
+            sentence: payload.sentence,
             senderId: socket.id
         });
     });

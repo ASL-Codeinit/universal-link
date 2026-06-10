@@ -30,9 +30,35 @@
                     <span class="status-dot"></span>
                     <span id="remoteName">Waiting for friend...</span>
                 </div>
-                
+
                 <div class="subtitle-overlay" id="remoteSubtitles">
                     <div class="subtitle-text" id="remoteSubtitleText">Waiting for connection...</div>
+                </div>
+            </div>
+
+            <div class="local-preview-overlay">
+                <div class="local-video-section">
+                    <div class="video-wrapper">
+                        <video id="localVideo" autoplay muted playsinline></video>
+                        <canvas id="localCanvas" class="overlay-canvas"></canvas>
+                        <div class="video-label small">
+                            <span class="status-dot"></span>
+                            You
+                        </div>
+
+                        <div id="localLiveHUD" class="local-live-hud">
+                            ML: Idle
+                        </div>
+
+                        <div class="detection-indicator inactive" id="localDetection">
+                            <span class="pulse-dot"></span>
+                            <span>Detecting...</span>
+                        </div>
+
+                        <div class="subtitle-overlay" id="localSubtitles">
+                            <div class="subtitle-text" id="localSubtitleText">Waiting for signs...</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -43,31 +69,7 @@
             </div>
         </div>
 
-        <div class="local-video-section">
-            <div class="video-wrapper">
-                <video id="localVideo" autoplay muted playsinline></video>
-                <canvas id="localCanvas" class="overlay-canvas"></canvas>
-                <div class="video-label">
-                    <span class="status-dot"></span>
-                    You
-                </div>
-
-                <div id="localLiveHUD" style="position: absolute; top: 10px; right: 10px; background: rgba(0, 0, 0, 0.65); color: #fff; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 11px; pointer-events: none; border: 1px solid rgba(255,255,255,0.1); z-index: 10; display: block;">
-                    ML: Idle
-                </div>
-
-                <div class="detection-indicator inactive" id="localDetection">
-                    <span class="pulse-dot"></span>
-                    <span>Detecting...</span>
-                </div>
-
-                <div class="subtitle-overlay" id="localSubtitles">
-                    <div class="subtitle-text" id="localSubtitleText">Waiting for signs...</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="local-panel close-drawer" id="chatDrawer">
+        <div class="transcript-panel close-drawer" id="chatDrawer">
             <div class="chat-section">
                 <div class="chat-header">
                     <h3>📝 Transcript</h3>
@@ -79,7 +81,7 @@
             </div>
         </div>
 
-    </div> ```
+    </div>
 
     <!-- Bottom Controls -->
     <div class="controls-bar">

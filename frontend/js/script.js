@@ -14,7 +14,7 @@ let isCameraMuted = false;
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', function() {
     // Get user mode from sessionStorage (set in lobby.html)
-    
+
     userMode = sessionStorage.getItem('userMode') || 'speaker';
     console.log('User mode:', userMode);
 
@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Display room ID
     const roomIdDisplay = document.getElementById('roomIdDisplay');
+    const chatDrawer = document.getElementById('chatDrawer');
     if (roomIdDisplay) {
         roomIdDisplay.textContent = roomId;
     }
@@ -108,6 +109,53 @@ function updateStatus(message) {
     console.log('Status:', message);
 }
 
+function logActiveVideoDimensions(stream) {
+    if (!stream || !stream.getVideoTracks) return;
+    const videoTrack = stream.getVideoTracks()[0];
+    if (!videoTrack) return;
+
+    const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
+    const width = settings.width || 'unknown';
+    const height = settings.height || 'unknown';
+    console.log(`📽️ Active video dimensions: ${width}x${height}`);
+}
+
+function showMediaError(message) {
+    updateStatus(message);
+
+    let alertBanner = document.getElementById('mediaErrorBanner');
+    if (!alertBanner) {
+        alertBanner = document.createElement('div');
+        alertBanner.id = 'mediaErrorBanner';
+        alertBanner.style.position = 'fixed';
+        alertBanner.style.top = '20px';
+        alertBanner.style.left = '50%';
+        alertBanner.style.transform = 'translateX(-50%)';
+        alertBanner.style.zIndex = '9999';
+        alertBanner.style.maxWidth = '90%';
+        alertBanner.style.padding = '14px 18px';
+        alertBanner.style.background = 'rgba(255, 80, 80, 0.95)';
+        alertBanner.style.color = '#fff';
+        alertBanner.style.fontSize = '14px';
+        alertBanner.style.borderRadius = '12px';
+        alertBanner.style.boxShadow = '0 8px 24px rgba(0,0,0,0.25)';
+        alertBanner.style.fontFamily = 'Poppins, sans-serif';
+        alertBanner.style.textAlign = 'center';
+        alertBanner.style.pointerEvents = 'none';
+        document.body.appendChild(alertBanner);
+    }
+
+    alertBanner.textContent = `Camera/Mic Error: ${message}`;
+    alertBanner.style.display = 'block';
+
+    clearTimeout(showMediaError._timeout);
+    showMediaError._timeout = setTimeout(() => {
+        if (alertBanner) {
+            alertBanner.style.display = 'none';
+        }
+    }, 12000);
+}
+
 
 // --- WEBRTC SETUP ---
 const configuration = {
@@ -134,6 +182,9 @@ let isCallStarted = false;
 // --- GET USER MEDIA ---
 async function initializeMedia() {
     try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('This browser does not support camera/microphone access or requires HTTPS/localhost.');
+        }
         localStream = await navigator.mediaDevices.getUserMedia({ 
             video: true, 
             audio: true 
@@ -163,8 +214,10 @@ async function initializeMedia() {
         // Auto-start call
         setTimeout(() => startCall(), 1000);
     } catch (error) {
-        console.error('Error accessing media devices:', error);
+        const errorMessage = error?.message || String(error);
+        console.error('Error accessing media devices:', errorMessage);
         updateStatus('Error: Could not access camera/microphone');
+        showMediaError(errorMessage);
     }
 }
 
@@ -455,10 +508,7 @@ function onHandsDetected(results) {
             const allFeatures = [...leftFeatures, ...rightFeatures];
 
             // send to ML model
-            sendToMLModel({
-                flatArray: allFeatures,
-                handedness: 'Both'
-            });
+            sendToMLModel(allFeatures, ['Both']);
         }
 
     } else {
@@ -652,7 +702,7 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
 function sendPredictionToRemote(prediction) {
     console.log('📤 Sending prediction to remote user:', prediction);
     
-    socket.emit('remote-sign-prediction', {
+    socket.emit('sign-prediction', {
         roomId: roomId,
         prediction: {
             sign: prediction.sign,
@@ -697,7 +747,7 @@ function handleIncomingPrediction(prediction) {
             // Combine your array of words into a single readable string (e.g., "Hello Name")
             const currentDraftString = wordStack.join(" ");
             
-            socket.emit('remote-sign-prediction', {
+            socket.emit('sign-prediction', {
                 roomId: roomId,
                 prediction: prediction,
                 draftSentence: currentDraftString // Sends the full running stack over!
@@ -759,7 +809,7 @@ window.addEventListener('keydown', async (event) => {
 
                 if (socket && roomId) {
                     socket.emit('send-sentence', {
-                        room: roomId,
+                        roomId: roomId,
                         sentence: data.sentence
                     });
                 }
