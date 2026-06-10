@@ -49,7 +49,7 @@ def extract_robust_features(hand_landmarks):
         tip_coord = normalized_coords[tip_id]
         distance = float(np.linalg.norm(tip_coord))
         flattened_features.append(distance)
-        
+    print(flattened_features)
     return flattened_features # Returns 68 features per hand
 
 # 4. Text Accumulation & Auto-Stack State

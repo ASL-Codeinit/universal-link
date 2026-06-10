@@ -6,6 +6,7 @@ import joblib
 import numpy as np
 import os
 from dotenv import load_dotenv
+from typing import Optional
 
 load_dotenv()
 app = FastAPI()
@@ -30,7 +31,8 @@ app.add_middleware(
 # Request body schema
 class LandmarkRequest(BaseModel):
     landmarks: list[float]
-    handedness: str
+    handedness: list[str]
+    timestamp: Optional[int] = None
 
 # Request grammar Schema
 class GrammarRequest(BaseModel):
@@ -40,6 +42,7 @@ print(f"Loading ML model from: {MODEL_PATH}")
 try:
     model = joblib.load(MODEL_PATH)
     print("✅ Model loaded successfully!")
+    print("Expected features:", model.n_features_in_)
 except Exception as e:
     print(f"❌ Error loading model: {e}")
     model = None
@@ -68,6 +71,10 @@ def predict(data: LandmarkRequest):
     if len(landmarks) == 136:
         # User is showing two hands. Data is already full.
         input_data = landmarks
+    elif len(landmarks) == 68:
+        # Pad missing second hand
+        input_data = landmarks + [0.0] * 68
+
     else:
         # Safeguard against corrupted data packets
         return {"error": f"Data length {len(landmarks)} is invalid. Need 63 or 126."}

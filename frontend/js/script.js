@@ -49,8 +49,19 @@ document.addEventListener('DOMContentLoaded', function() {
     if (userMode === 'signer') {
         if (localDetection) localDetection.style.display = 'flex';
         if (localSubtitles) localSubtitles.style.display = 'block';
+        if (chatDrawer) {
+            chatDrawer.classList.add('close-drawer');
+            chatDrawer.classList.remove('open-drawer');
+        }
     } else {
         if (remoteSubtitles) remoteSubtitles.style.display = 'block';
+        if (chatDrawer) {
+            chatDrawer.classList.remove('close-drawer');
+            chatDrawer.classList.add('open-drawer');
+            
+            const toggleBtn = document.getElementById('chatToggleBtn');
+            if (toggleBtn) toggleBtn.classList.add('active-chat-mode');
+        }
     }
     
     // Initialize media after DOM is ready
@@ -97,14 +108,6 @@ function updateStatus(message) {
     console.log('Status:', message);
 }
 
-// Update status function
-function updateStatus(message) {
-    const statusText = document.getElementById('statusText');
-    if (statusText) {
-        statusText.textContent = message;
-    }
-    console.log('Status:', message);
-}
 
 // --- WEBRTC SETUP ---
 const configuration = {
@@ -135,6 +138,7 @@ async function initializeMedia() {
             video: true, 
             audio: true 
         });
+        logActiveVideoDimensions(localStream);
         
         document.getElementById('localVideo').srcObject = localStream;
         
@@ -333,7 +337,39 @@ function setupSocketHandlers() {
         }
         
         displayRemoteSubtitles(data.prediction);
-        addToTranscript(data.prediction.sign);
+        //addToTranscript(data.prediction.sign);
+        const remoteSubtitleText = document.getElementById('remoteSubtitleText');
+        if (remoteSubtitleText && data.draftSentence) {
+            remoteSubtitleText.innerHTML = `
+                <span style="color: #aaa; font-size: 13px; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; font-weight: 500;">Drafting Signs...</span>
+                <span style="color: #ffffff; font-size: 24px; font-weight: 600; text-shadow: 2px 2px 4px #000;">${data.draftSentence}</span>
+            `;
+        }
+    });
+
+    // Catch the finished sentence from the sender and push it to the receiver's chatbox
+    socket.on('receive-sentence', (data) => {
+        // Fallback checks to extract the string regardless of wrapping structure
+        const finalSentence = data.sentence || (data.incomingData && data.incomingData.sentence);
+        
+        if (!finalSentence) {
+            console.warn('⚠️ Received a sentence event, but the message string field was empty:', data);
+            return;
+        }
+
+        console.log('📩 Received completed sentence from friend:', finalSentence);
+        
+        // 1. Add the finished, beautiful sentence to the receiver's sidebar chat log panel
+        addToTranscript(finalSentence);
+        
+        // 2. Clear out the drafting overlay state and replace it with the clean final sentence look
+        const remoteSubtitleText = document.getElementById('remoteSubtitleText');
+        if (remoteSubtitleText) {
+            remoteSubtitleText.innerHTML = `
+                <span style="color: #4CAF50; font-size: 14px; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; text-shadow: 1px 1px 2px #000;">✨ Friend Translation</span>
+                <span style="color: #fff; font-size: 24px; text-shadow: 2px 2px 4px #000;">${finalSentence}</span>
+            `;
+        }
     });
 }
 
@@ -370,12 +406,12 @@ function initializeMediaPipe() {
     startHandDetection();
 }
 
-// Callback function when MediaPipe detects hands
 function onHandsDetected(results) {
     const canvas = document.getElementById('localCanvas');
     const ctx = canvas.getContext('2d');
     
     const video = document.getElementById('localVideo');
+    
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -536,8 +572,8 @@ let apiCallCount = 0;
 let successfulCalls = 0;
 let failedCalls = 0;
 
-// Send landmarks to ML model
-async function sendToMLModel(landmarkData) {
+
+async function sendToMLModel(combinedLandmarks, handednessArray) {
     const now = Date.now();
     
     if (now - lastPredictionTime < PREDICTION_INTERVAL) {
@@ -547,14 +583,12 @@ async function sendToMLModel(landmarkData) {
     lastPredictionTime = now;
     apiCallCount++;
     
-    const landmarksArray = landmarkData.flatArray;
-    
-    console.log('📤 Sending to ML model (Call #' + apiCallCount + ')');
+    console.log(`📤 Sending to ML model (Call #${apiCallCount}) | Total values: ${combinedLandmarks.length}`);
     
     try {
         const requestPayload = {
-            landmarks: landmarksArray,
-            handedness: landmarkData.handedness,
+            landmarks: combinedLandmarks, // Will natively be 68 or 136 elements
+            handedness: handednessArray,  // Array structure: e.g., ["Left"] or ["Right", "Left"]
             timestamp: now
         };
         
@@ -572,31 +606,41 @@ async function sendToMLModel(landmarkData) {
         }
         
         const predictionData = await response.json();
-        const prediction = parseFriendResponse(predictionData, landmarkData.handedness);
+        console.log("Backend response:", predictionData);
+        
+        // Pass array along for resolution matching parsing engine requirements
+        const prediction = parseFriendResponse(predictionData, handednessArray);
         
         console.log('✅ Prediction received:', prediction);
         successfulCalls++;
         
-        // Send to remote user
         sendPredictionToRemote(prediction);
-        
-        // Also display on OWN screen (signer sees their own interpretation)
-        displayLocalSubtitles(prediction);
-        
-        // Add to transcript
-        addToTranscript(prediction.sign);
+        // displayLocalSubtitles(prediction);
+        const hudEl = document.getElementById('localLiveHUD');
+        if (hudEl && prediction.sign) {
+            const pct = (prediction.confidence * 100).toFixed(0);
+            hudEl.innerText = `ML: ${prediction.sign} (${pct}%)`;
+            
+            // Optional styling: tint the corner text green if it's high confidence
+            hudEl.style.color = prediction.confidence > 0.50 ? '#4CAF50' : '#fff';
+        }
+        // addToTranscript(prediction.sign);
+
+        handleIncomingPrediction(prediction);
         
         currentPrediction = prediction;
         updateAPIStats();
+        console.log("📊 CURRENT FRAME FLAT ARRAY:", JSON.stringify(combinedLandmarks));
+    
+        console.log(`Handedness arrangement for this frame:`, handednessArray);
         
     } catch (error) {
         console.error('❌ API Error:', error.message);
         failedCalls++;
         updateAPIStats();
         
-        // Fallback to mock for testing
         if (API_CONFIG.ACTIVE === 'MOCK') {
-            const mockPrediction = generateMockPrediction(landmarkData.handedness);
+            const mockPrediction = generateMockPrediction(handednessArray);
             sendPredictionToRemote(mockPrediction);
             displayLocalSubtitles(mockPrediction);
             addToTranscript(mockPrediction.sign);
@@ -608,7 +652,7 @@ async function sendToMLModel(landmarkData) {
 function sendPredictionToRemote(prediction) {
     console.log('📤 Sending prediction to remote user:', prediction);
     
-    socket.emit('sign-prediction', {
+    socket.emit('remote-sign-prediction', {
         roomId: roomId,
         prediction: {
             sign: prediction.sign,
@@ -637,6 +681,106 @@ function displayRemoteSubtitles(prediction) {
     `;
 }
 
+// 1. Maintain the runtime state buffer in your script scope
+let wordStack = []; 
+let currentConfidenceWord = "";
+
+
+function handleIncomingPrediction(prediction) {
+    // Save the current highest-confidence word to an intermediate memory variable
+    if (prediction.sign && prediction.sign.toLowerCase() !== 'none' && prediction.confidence > 0.50) {
+        currentConfidenceWord = prediction.sign;
+        
+        // Push it into the tracking stack array
+        pushToStack(currentConfidenceWord);
+        if (socket && roomId) {
+            // Combine your array of words into a single readable string (e.g., "Hello Name")
+            const currentDraftString = wordStack.join(" ");
+            
+            socket.emit('remote-sign-prediction', {
+                roomId: roomId,
+                prediction: prediction,
+                draftSentence: currentDraftString // Sends the full running stack over!
+            });
+        }
+    }
+}
+
+function pushToStack(word) {
+    const cleanWord = word.trim();
+
+    // Avoid pushing duplicate consecutive entries to keep logs clean
+    if (wordStack.length === 0 || wordStack[wordStack.length - 1] !== cleanWord) {
+        wordStack.push(cleanWord);
+        console.log("🎒 Stack updated:", wordStack);
+        
+        // 🚨 OVERRIDE LOCAL SUBTITLES: Show the running stack buffer over your video instead of a single word!
+        const localSubtitleText = document.getElementById('localSubtitleText');
+        if (localSubtitleText) {
+            localSubtitleText.innerHTML = `
+                <span style="color: #ffa500; font-size: 14px; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px;">Drafting Sentence...</span>
+                ${wordStack.join(' ')}
+            `;
+        }
+    }
+}
+
+window.addEventListener('keydown', async (event) => {
+    if (event.key === '.') {
+        if (wordStack.length === 0) return;
+
+        console.log("🧠 Sending stack to Groq:", wordStack);
+        
+        try {
+            const response = await fetch('http://127.0.0.1:8000/fix-grammar', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ words: wordStack })
+            });
+
+            const data = await response.json();
+            
+            if (data.sentence) {
+                console.log("✨ Translation Result:", data.sentence);
+                
+                // 🚨 UPDATE THE SUBTITLE OVERLAY: Swap the stack out for your clean AI sentence!
+                const localSubtitleText = document.getElementById('localSubtitleText');
+                if (localSubtitleText) {
+                    localSubtitleText.innerHTML = `
+                        <span style="color: #4CAF50; font-size: 14px; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px;">✨ Groq AI</span>
+                        <span style="color: #fff;">${data.sentence}</span>
+                    `;
+                }
+
+                // Push the clean translation to your side transcript log box too!
+                addToTranscript(data.sentence);
+
+                if (socket && roomId) {
+                    socket.emit('send-sentence', {
+                        room: roomId,
+                        sentence: data.sentence
+                    });
+                }
+
+                // Clear out working memory so you can build your next sentence from scratch
+                wordStack = [];
+                lastAddedWord = "";
+            }
+        } catch (err) {
+            console.error("Network communication failed:", err);
+        }
+    }
+});
+
+function updateStackUI() {
+    const stackDisplay = document.getElementById('globalStackDisplay');
+    if (stackDisplay) {
+        stackDisplay.innerText = `STACK: ${wordStack.join(' ')}`;
+    }
+}
+
 // Display YOUR OWN signs as subtitles on your local screen
 function displayLocalSubtitles(prediction) {
     const localSubtitles = document.getElementById('localSubtitles');
@@ -658,6 +802,28 @@ function displayLocalSubtitles(prediction) {
             Confidence: ${confidencePercent}%
         </div>
     `;
+}
+
+/**
+ * Toggles the sidebar drawer panel open and closed (Google Meet layout style)
+ */
+function toggleChatDrawer() {
+    const drawer = document.getElementById('chatDrawer');
+    const toggleBtn = document.getElementById('chatToggleBtn');
+    
+    if (drawer && toggleBtn) {
+        if (drawer.classList.contains('close-drawer')) {
+            drawer.classList.remove('close-drawer');
+            drawer.classList.add('open-drawer');
+            toggleBtn.classList.add('active-chat-mode');
+            console.log("📁 Sidebar Drawer: Opened");
+        } else {
+            drawer.classList.remove('open-drawer');
+            drawer.classList.add('close-drawer');
+            toggleBtn.classList.remove('active-chat-mode');
+            console.log("📁 Sidebar Drawer: Closed");
+        }
+    }
 }
 
 // Parse response from ML API
@@ -728,10 +894,30 @@ function updateAPIStats() {
 
 let transcript = [];
 
-function addToTranscript(sign) {
-    const timestamp = new Date().toLocaleTimeString();
-    transcript.push({ sign, timestamp });
-    updateTranscriptDisplay();
+function addToTranscript(text) {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+
+    // Remove the placeholder text if it's the first message
+    const emptyPrompt = chatMessages.querySelector('.chat-empty');
+    if (emptyPrompt) {
+        emptyPrompt.remove();
+    }
+
+    // Create a clean message block
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message';
+
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    messageDiv.innerHTML = `
+        <div class="chat-message-sign">${text}</div>
+        <div class="chat-message-time">${timestamp}</div>
+    `;
+
+    // Append and automatically scroll to the bottom of the transcript container
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function updateTranscriptDisplay() {
