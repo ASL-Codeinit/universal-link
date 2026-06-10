@@ -13,6 +13,12 @@ app = FastAPI()
 groq_api_key = os.getenv("GROQ_API_KEY")
 client = Groq(api_key=groq_api_key)
 
+BACKEND_DIR = os.path.dirname(__file__)
+MODEL_PATH = os.path.join(BACKEND_DIR, "asl_model.pkl")
+
+class GrammarRequest(BaseModel):
+    words: list[str]
+
 # Allow CORS
 app.add_middleware(
     CORSMiddleware,
@@ -32,9 +38,9 @@ class LandmarkRequest(BaseModel):
 class GrammarRequest(BaseModel):
     words: list[str]
 
-print("Loading ML model...")
+print(f"Loading ML model from: {MODEL_PATH}")
 try:
-    model = joblib.load('../training/asl_model.pkl')
+    model = joblib.load(MODEL_PATH)
     print("✅ Model loaded successfully!")
     print("Expected features:", model.n_features_in_)
 except Exception as e:
@@ -62,7 +68,6 @@ def predict(data: LandmarkRequest):
     handedness = data.handedness
 
     # --- THE FIX: FORCED PADDING ---
-
     if len(landmarks) == 136:
         # User is showing two hands. Data is already full.
         input_data = landmarks

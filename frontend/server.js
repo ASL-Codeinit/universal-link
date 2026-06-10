@@ -1,103 +1,103 @@
 const express = require('express');
 const http = require('http');
-const path = require('path');
 const { Server } = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 
+// Enable CORS so your friend can connect from a different URL/IP
 const io = new Server(server, {
     cors: {
-        origin: '*',
-        methods: ['GET', 'POST']
+        origin: "*",
+        methods: ["GET", "POST"]
     }
 });
 
-// Static Assets
-app.use('/css', express.static(path.join(__dirname, 'css')));
-app.use('/js', express.static(path.join(__dirname, 'js')));
-app.use('/assets', express.static(path.join(__dirname, 'assets')));
+// Serve your HTML/JS files from the frontend folder
+app.use(express.static(__dirname, { index: false }));
 
-// Lobby Page
+// Now these routes will finally work:
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'lobby.html'));
 });
 
-// Video Call Page
 app.get('/video', (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'call.html'));
 });
 
-// =====================
-// Socket.IO Signaling
-// =====================
-
 io.on('connection', (socket) => {
-    console.log(`User Connected: ${socket.id}`);
+    console.log(`✅ User connected: ${socket.id}`);
 
+    // --- ROOM LOGIC ---
     socket.on('join-room', (roomId) => {
         socket.join(roomId);
-        console.log(`Socket ${socket.id} joined room ${roomId}`);
-
-        const clients = Array.from(io.sockets.adapter.rooms.get(roomId) || []);
-
-        if (clients.length > 1) {
-            socket.to(roomId).emit('user-connected', socket.id);
-        }
+        console.log(`📍 User ${socket.id} joined room: ${roomId}`);
+        
+        // Notify others in the room that a new person joined
+        socket.to(roomId).emit('user-connected', socket.id);
     });
 
-    // --- NEW: Handle Sharing User Mode ('signer' vs 'speaker') ---
-    socket.on('user-mode', (data) => {
-        socket.to(data.roomId).emit('remote-user-mode', {
-            senderId: socket.id,
-            mode: data.mode
+    // --- USER MODE HANDLER (NEWLY ADDED) ---
+    socket.on('user-mode', (payload) => {
+        console.log(`👤 User ${socket.id} selected mode: ${payload.mode} in room ${payload.roomId}`);
+        
+        // Relay to other users in the room
+        socket.to(payload.roomId).emit('remote-user-mode', {
+            mode: payload.mode,
+            senderId: socket.id
         });
     });
 
-    socket.on('send-sentence', (data) => {
-        // Relays the completed sentence straight to everyone else in that room
-        socket.to(data.room).emit('receive-sentence', { sentence: data.sentence });
-    });
-
-    // WebRTC Offer
-    socket.on('offer', ({ roomId, offer }) => {
-        socket.to(roomId).emit('offer', {
-            offer,
-            sender: socket.id
+    // --- WEBRTC SIGNALING ---
+    // 1. Relay the Offer
+    socket.on('offer', (payload) => {
+        console.log(`📞 Offer from ${socket.id} to room ${payload.roomId}`);
+        // payload should contain { offer, roomId }
+        socket.to(payload.roomId).emit('offer', {
+            offer: payload.offer,
+            senderId: socket.id
         });
     });
 
-    // WebRTC Answer
-    socket.on('answer', ({ roomId, answer }) => {
-        socket.to(roomId).emit('answer', {
-            answer,
-            sender: socket.id
+    // 2. Relay the Answer
+    socket.on('answer', (payload) => {
+        console.log(`📞 Answer from ${socket.id} to room ${payload.roomId}`);
+        // payload should contain { answer, roomId }
+        socket.to(payload.roomId).emit('answer', {
+            answer: payload.answer,
+            senderId: socket.id
         });
     });
 
-    // ICE Candidates
-    socket.on('ice-candidate', ({ roomId, candidate }) => {
-        socket.to(roomId).emit('ice-candidate', {
-            candidate,
-            sender: socket.id
+    // 3. Relay ICE Candidates (Network info)
+    socket.on('ice-candidate', (payload) => {
+        // payload should contain { candidate, roomId }
+        socket.to(payload.roomId).emit('ice-candidate', payload.candidate);
+    });
+
+    // --- SIGN LANGUAGE PREDICTION RELAY ---
+    // Relay sign predictions to the other user
+    socket.on('sign-prediction', (payload) => {
+        // payload: { roomId, prediction: { sign, confidence, handedness } }
+        console.log(`🤟 Sign detected in room ${payload.roomId}: ${payload.prediction.sign} (${(payload.prediction.confidence * 100).toFixed(0)}%)`);
+        
+        // Send to everyone ELSE in the room (not the sender)
+        socket.to(payload.roomId).emit('remote-sign-prediction', {
+            prediction: payload.prediction,
+            senderId: socket.id
         });
     });
 
-    // --- FIX: Sign Predictions ---
-    socket.on('remote-sign-prediction', (data) => {
-        // Change event string to 'remote-sign-prediction' to match your client listener!
-        socket.to(data.roomId).emit('remote-sign-prediction', data);
-    });
-
+    // --- CLEANUP ---
     socket.on('disconnect', () => {
-        console.log(`User Disconnected: ${socket.id}`);
-        socket.broadcast.emit('user-disconnected', socket.id);
+        console.log(`❌ User disconnected: ${socket.id}`);
     });
 });
 
 const PORT = process.env.PORT || 3000;
-
 server.listen(PORT, () => {
-    console.log('🚀 ASL Video Call Server Running');
+    console.log(`\n🚀 ASL Video Call Server Running`);
     console.log(`📡 Signaling Server: http://localhost:${PORT}`);
+    console.log(`🌐 Share with friends: http://localhost:${PORT}\n`);
 });

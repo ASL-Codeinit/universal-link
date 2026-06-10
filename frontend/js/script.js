@@ -13,7 +13,8 @@ let isCameraMuted = false;
 
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', function() {
-    // Get user mode from sessionStorage (set in start.html)
+    // Get user mode from sessionStorage (set in lobby.html)
+    
     userMode = sessionStorage.getItem('userMode') || 'speaker';
     console.log('User mode:', userMode);
 
@@ -408,49 +409,59 @@ function initializeMediaPipe() {
 function onHandsDetected(results) {
     const canvas = document.getElementById('localCanvas');
     const ctx = canvas.getContext('2d');
+    
     const video = document.getElementById('localVideo');
     
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Arrays to collect data across ALL visible hands in this single frame
-    let frameLandmarksArray = [];
-    let frameHandednessArray = [];
-
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         
+        // always draw skeleton for all detected hands
         for (let i = 0; i < results.multiHandLandmarks.length; i++) {
             const landmarks = results.multiHandLandmarks[i];
-            const handedness = results.multiHandedness[i].label; // "Left" or "Right"
-            
-            // Draw tracking visualizers overlay
-            drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 2 });
-            drawLandmarks(ctx, landmarks, { color: '#FF0000', lineWidth: 1, radius: 3 });
-            
-            if (userMode === 'signer') {
-                // Extract 68 features for this specific hand
-                const handData = extractLandmarkData(landmarks, handedness);
-                if (handData) {
-                    // Push the features and labels into our frame collectors
-                    frameLandmarksArray.push(...handData.flatArray); 
-                    frameHandednessArray.push(handedness);
-                }
-            }
+            drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
+                color: '#00FF00', lineWidth: 2
+            });
+            drawLandmarks(ctx, landmarks, {
+                color: '#FF0000', lineWidth: 1, radius: 3
+            });
         }
 
-        // Trigger UI active status state
+        // only process for ML if user is signer
         if (userMode === 'signer') {
             const indicator = document.getElementById('localDetection');
             indicator.classList.remove('inactive');
             indicator.innerHTML = '<span class="pulse-dot"></span><span>Detecting ✓</span>';
-            
-            // Pass the aggregated frame arrays to the ML transmitter
-            sendToMLModel(frameLandmarksArray, frameHandednessArray);
+
+            // build 136 feature array — left hand + right hand
+            let leftFeatures  = new Array(68).fill(0);  // default zeros
+            let rightFeatures = new Array(68).fill(0);  // default zeros
+
+            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                const landmarks  = results.multiHandLandmarks[i];
+                const handedness = results.multiHandedness[i].label;
+                const features   = extractRobustFeatures(landmarks);
+
+                if (handedness === 'Left') {
+                    leftFeatures = features;
+                } else if (handedness === 'Right') {
+                    rightFeatures = features;
+                }
+            }
+
+            // combine both hands into 136 values
+            const allFeatures = [...leftFeatures, ...rightFeatures];
+
+            // send to ML model
+            sendToMLModel({
+                flatArray: allFeatures,
+                handedness: 'Both'
+            });
         }
 
     } else {
-        // No hands visible on screen
         if (userMode === 'signer') {
             const indicator = document.getElementById('localDetection');
             indicator.classList.add('inactive');
@@ -459,82 +470,42 @@ function onHandsDetected(results) {
     }
 }
 
-
-function extractLandmarkData(handLandmarks, handednessLabel) {
-    const landmarks = handLandmarks;
-    if (!landmarks || landmarks.length < 21) return null;
-
-    // 1. Extract raw coordinates & apply mirror flip directly into named object keys
-    const rawCoords = landmarks.map(lm => ({
-        x: -1 * lm.x, // ✅ MIRROR FIX applied
-        y: lm.y, 
-        z: lm.z
+// Extract landmark data
+// Extract robust features matching Python training format
+function extractRobustFeatures(landmarks) {
+    // step 1 - center on wrist
+    const wrist = landmarks[0];
+    let centered = landmarks.map(lm => ({
+        x: lm.x - wrist.x,
+        y: lm.y - wrist.y,
+        z: lm.z - wrist.z
     }));
 
-    // 2. Centering around the Wrist (Landmark 0)
-    const wrist = rawCoords[0];
-    const centeredCoords = rawCoords.map(point => ({
-        x: point.x - wrist.x,
-        y: point.y - wrist.y,
-        z: point.z - wrist.z
+    // step 2 - find max value (normalise by hand size)
+    let maxVal = Math.max(...centered.flatMap(p => 
+        [Math.abs(p.x), Math.abs(p.y), Math.abs(p.z)]
+    ));
+    if (maxVal === 0) maxVal = 1e-5;
+
+    // step 3 - divide everything by max
+    let normalised = centered.map(p => ({
+        x: p.x / maxVal,
+        y: p.y / maxVal,
+        z: p.z / maxVal
     }));
 
-    // 3. Find the GLOBAL Absolute Maximum (Matches np.max(np.abs(centered)))
-    let maxVal = 1e-5; // Safeguard against divide-by-zero
-    for (let i = 0; i < centeredCoords.length; i++) {
-        const absX = Math.abs(centeredCoords[i].x); // ✅ FIXED: Accessing object keys cleanly
-        const absY = Math.abs(centeredCoords[i].y);
-        const absZ = Math.abs(centeredCoords[i].z);
-        
-        if (absX > maxVal) maxVal = absX;
-        if (absY > maxVal) maxVal = absY;
-        if (absZ > maxVal) maxVal = absZ;
-    }
+    // step 4 - flatten to 63 values
+    let features = normalised.flatMap(p => [p.x, p.y, p.z]);
 
-    // 4. Normalize coordinates and build the flattened array (63 spatial values)
-    const normalizedCoords = [];
-    const flatArray = [];
-
-    centeredCoords.forEach((point, i) => {
-        const normX = point.x / maxVal;
-        const normY = point.y / maxVal;
-        const normZ = point.z / maxVal;
-
-        normalizedCoords.push({ id: i, x: normX, y: normY, z: normZ });
-        flatArray.push(normX, normY, normZ); 
-    });
-
-    // 5. Calculate Euclidean distances for fingertip IDs (4, 8, 12, 16, 20)
+    // step 5 - add 5 fingertip distances (total 68)
     const tipIds = [4, 8, 12, 16, 20];
-    tipIds.forEach(id => {
-        const tip = normalizedCoords[id];
-        const distance = Math.sqrt(tip.x ** 2 + tip.y ** 2 + tip.z ** 2);
-        flatArray.push(distance); 
-    });
-
-    return {
-        handedness: handednessLabel,
-        landmarks: normalizedCoords, 
-        flatArray: flatArray // 🚀 Exactly 68 valid numerical elements        
-    };
-}
-
-// Run this right after obtaining your stream variable
-function logActiveVideoDimensions(stream) {
-    const videoTrack = stream.getVideoTracks()[0];
-    
-    if (videoTrack) {
-        const settings = videoTrack.getSettings();
-        console.log("=========================================");
-        console.log("📡 ACTUAL FRONTEND WEBCAM STREAM SETTINGS:");
-        console.log("=========================================");
-        console.log(`🔹 Width:  ${settings.width}px`);
-        console.log(`🔹 Height: ${settings.height}px`);
-        console.log(`🔹 Ratio:  ${(settings.width / settings.height).toFixed(3)}`);
-        console.log("=========================================");
-    } else {
-        console.error("❌ No active video tracks found.");
+    for (const tipId of tipIds) {
+        const tip = normalised[tipId];
+        const distance = Math.sqrt(tip.x**2 + tip.y**2 + tip.z**2);
+        features.push(distance);
     }
+
+    return features; // 68 values per hand
 }
 
 // Process video frames continuously
@@ -570,8 +541,7 @@ async function startHandDetection() {
 // 🔥 UPDATED API CONFIGURATION
 const API_CONFIG = {
     MOCK_API: 'https://jsonplaceholder.typicode.com/posts',
-    // LOCAL_API: 'http://localhost:8000/predict',
-    LOCAL_API: 'http://127.0.0.1:8000/predict',
+    LOCAL_API: 'http://localhost:8000/predict',
     
     // 👇 REPLACE THIS WITH YOUR ACTUAL RENDER URL AFTER DEPLOYMENT
     PRODUCTION_API: 'https://your-app-name.onrender.com/predict',
