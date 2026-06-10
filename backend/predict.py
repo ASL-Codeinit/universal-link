@@ -11,12 +11,13 @@ load_dotenv()
 groq_api_key = os.getenv("GROQ_API_KEY")
 client = Groq(api_key=groq_api_key)
 
-# 2. Load your local trained model from the relative path setup
+# 2. Load your local trained model from the backend-relative path
+MODEL_PATH = os.path.join(os.path.dirname(__file__), 'asl_model.pkl')
 try:
-    model = joblib.load('../training/asl_model.pkl')
-    print("✅ Machine Learning model loaded successfully!")
+    model = joblib.load(MODEL_PATH)
+    print(f"✅ Machine Learning model loaded successfully from {MODEL_PATH}!")
 except Exception as e:
-    print(f"❌ Error loading model: {e}")
+    print(f"❌ Error loading model from {MODEL_PATH}: {e}")
     exit()
 
 # 🟢 FIX 1: Open the camera BEFORE loading MediaPipe to prevent background deadlock hangs

@@ -12,6 +12,9 @@ app = FastAPI()
 groq_api_key = os.getenv("GROQ_API_KEY")
 client = Groq(api_key=groq_api_key)
 
+BACKEND_DIR = os.path.dirname(__file__)
+MODEL_PATH = os.path.join(BACKEND_DIR, "asl_model.pkl")
+
 class GrammarRequest(BaseModel):
     words: list[str]
 
@@ -33,9 +36,9 @@ class LandmarkRequest(BaseModel):
 class GrammarRequest(BaseModel):
     words: list[str]
 
-print("Loading ML model...")
+print(f"Loading ML model from: {MODEL_PATH}")
 try:
-    model = joblib.load("asl_model.pkl")
+    model = joblib.load(MODEL_PATH)
     print("✅ Model loaded successfully!")
 except Exception as e:
     print(f"❌ Error loading model: {e}")

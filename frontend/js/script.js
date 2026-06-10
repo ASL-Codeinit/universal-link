@@ -13,7 +13,7 @@ let isCameraMuted = false;
 
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', function() {
-    // Get user mode from sessionStorage (set in start.html)
+    // Get user mode from sessionStorage (set in lobby.html)
     userMode = sessionStorage.getItem('userMode') || 'speaker';
     console.log('User mode:', userMode);
 
