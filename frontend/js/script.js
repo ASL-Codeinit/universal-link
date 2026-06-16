@@ -591,7 +591,7 @@ async function startHandDetection() {
 // 🔥 UPDATED API CONFIGURATION
 const API_CONFIG = {
     MOCK_API: 'https://jsonplaceholder.typicode.com/posts',
-    LOCAL_API: 'http://localhost:8000/predict',
+    LOCAL_API: 'http://localhost:5000/predict',
     
     // 👇 REPLACE THIS WITH YOUR ACTUAL RENDER URL AFTER DEPLOYMENT
     PRODUCTION_API: 'https://your-app-name.onrender.com/predict',
@@ -782,7 +782,7 @@ window.addEventListener('keydown', async (event) => {
         console.log("🧠 Sending stack to Groq:", wordStack);
         
         try {
-            const response = await fetch('http://127.0.0.1:8000/fix-grammar', {
+            const response = await fetch('http://127.0.0.1:5000/fix-grammar', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
