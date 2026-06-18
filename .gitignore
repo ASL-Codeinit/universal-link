@@ -2,6 +2,24 @@ node_modules/
 .env
 .env.local
 .DS_Store
-backend/venv/
-plan.md
+
+
+# Virtual environments
+venv/
+venv311/
 training/venv311/
+backend/venv/
+
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Generated datasets
+X.npy
+y.npy
+
+#Stuff
+plan.md
+
+*.pkl

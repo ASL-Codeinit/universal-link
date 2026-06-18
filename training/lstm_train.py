@@ -3,11 +3,10 @@ import os
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from sklearn.preprocessing import LabelEncoder
-import joblib
+
 
 # ── Settings ───────────────────────────────────────────────────
-DATA_DIR = 'lstm_data'
+
 MODEL_SAVE_PATH = 'lstm_model.pt'
 SEQUENCE_LENGTH = 20
 INPUT_SIZE = 136
@@ -18,52 +17,36 @@ EPOCHS = 50
 LEARNING_RATE = 0.001
 
 # ── Load Data ──────────────────────────────────────────────────
-print("📂 Loading data...")
+print("Loading data...")
 
-sequences = []
-labels = []
+X = np.load("X.npy")
+y = np.load("y.npy")
 
-words = os.listdir(DATA_DIR)
-print(f"Found words: {words}")
+print(X.shape)
+print(y.shape)
 
-for word in words:
-    word_dir = os.path.join(DATA_DIR, word)
-    files = os.listdir(word_dir)
-    print(f"  {word}: {len(files)} samples")
-    
-    for file in files:
-        if file.endswith('.npy'):
-            path = os.path.join(word_dir, file)
-            sequence = np.load(path)  # shape (20, 136)
-            sequences.append(sequence)
-            labels.append(word)
+# ── Load Label Map ──────────────────────────────────────────────
+import pickle
 
-sequences = np.array(sequences)  # shape (total_samples, 20, 136)
-labels = np.array(labels)
+with open("label_map.pkl", "rb") as f:
+    label_map = pickle.load(f)
 
-print(f"\n✅ Total samples: {len(sequences)}")
-print(f"✅ Data shape: {sequences.shape}")
+num_classes = len(label_map)
 
-# ── Encode Labels ──────────────────────────────────────────────
-le = LabelEncoder()
-encoded_labels = le.fit_transform(labels)
-print(f"✅ Classes: {le.classes_}")
+# ── Test/Train Split ─────────────────────────────────────────────
+from sklearn.model_selection import train_test_split
 
-# save label encoder so api.py can decode predictions
-joblib.dump(le, 'lstm_label_encoder.pkl')
-print("✅ Label encoder saved!")
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
 
-# ── Train/Test Split (no shuffle — keep sequences intact) ──────
-split = int(0.8 * len(sequences))
-
-X_train = sequences[:split]
-X_test  = sequences[split:]
-y_train = encoded_labels[:split]
-y_test  = encoded_labels[split:]
-
-print(f"\n📊 Train samples: {len(X_train)}")
-print(f"📊 Test samples:  {len(X_test)}")
-
+print(f"Train samples: {len(X_train)}")
+print(f"Test samples: {len(X_test)}")
+print(f"Classes: {num_classes}")
 # ── PyTorch Dataset ────────────────────────────────────────────
 class ASLDataset(Dataset):
     def __init__(self, X, y):
@@ -83,6 +66,35 @@ train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 test_loader  = DataLoader(test_dataset,  batch_size=BATCH_SIZE, shuffle=False)
 
 # ── LSTM Model ─────────────────────────────────────────────────
+# PyTorch model saving/loading approaches:
+#
+# 1. Save only the model's state_dict (learned weights).
+#    During inference, the model architecture (ASLModel) must be
+#    recreated exactly and then populated using load_state_dict().
+#    This approach is more portable, robust, and commonly used.
+#
+#    Save:
+#       torch.save(model.state_dict(), "model.pt")
+#
+#    Load:
+#       model = ASLModel(...)
+#       model.load_state_dict(torch.load("model.pt"))
+#
+# 2. Alternative: Save the entire model object.
+#    This removes the need to redefine the architecture during
+#    inference, but is less portable and can break if code changes.
+#
+#    Save:
+#       torch.save(model, "model.pt")
+#
+#    Load:
+#       model = torch.load("model.pt")
+#
+# In this project, a checkpoint dictionary is used. It stores the
+# state_dict along with metadata such as input_size, hidden_size,
+# num_layers, num_classes, and class names, allowing the inference
+# script to reconstruct the model automatically.
+# ───────────────────────────────────────────────────────────────
 class ASLModel(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, num_classes):
         super(ASLModel, self).__init__()
@@ -104,9 +116,8 @@ class ASLModel(nn.Module):
         out = self.fc(out)           # → (batch, num_classes)
         return out
 
-num_classes = len(le.classes_)
 model = ASLModel(INPUT_SIZE, HIDDEN_SIZE, NUM_LAYERS, num_classes)
-print(f"\n🧠 Model created!")
+print(f"\nModel created!")
 print(f"   Classes: {num_classes}")
 print(f"   Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
@@ -114,7 +125,7 @@ print(f"   Parameters: {sum(p.numel() for p in model.parameters()):,}")
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-print(f"\n🚀 Training for {EPOCHS} epochs...")
+print(f"\nTraining for {EPOCHS} epochs...")
 
 for epoch in range(EPOCHS):
     # training phase
@@ -164,9 +175,9 @@ torch.save({
     'hidden_size': HIDDEN_SIZE,
     'num_layers': NUM_LAYERS,
     'num_classes': num_classes,
-    'classes': le.classes_.tolist()
+    'classes': list(label_map.keys())
 }, MODEL_SAVE_PATH)
 
-print(f"\n✅ Model saved to {MODEL_SAVE_PATH}!")
-print(f"✅ Label encoder saved to lstm_label_encoder.pkl!")
-print(f"\n🎉 Training complete!")
+print(f"\nModel saved to {MODEL_SAVE_PATH}!")
+print(f"Label encoder saved to lstm_label_encoder.pkl!")
+print(f"\nTraining complete!")
