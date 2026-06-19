@@ -1,5 +1,16 @@
 # Migration to LSTM  - logs
 
+## Environment Setup
+
+Before generating sequences or running dataset scripts, create and activate a Python 3.11 virtual environment and install dependencies:
+
+```
+cd training
+python3.11 -m venv venv311
+source venv311/bin/activate
+pip install -r requirements-training.txt
+```
+
 ## 1.Inspecting the Current Data
 `Dataset Size`  
 - 2000 total samples (rows)

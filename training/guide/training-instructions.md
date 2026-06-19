@@ -2,7 +2,10 @@
 
 ## 1. Create Environment
 
+From the repository root, create and activate a Python 3.11 virtual environment, then install the training requirements:
+
 ```
+cd training
 python3.11 -m venv venv311
 source venv311/bin/activate
 pip install -r requirements-training.txt

@@ -1,5 +1,18 @@
 # LSTM Training Pipeline 
 
+## Environment Setup
+
+Before running any dataset or training scripts, create and activate a Python 3.11 virtual environment and install dependencies:
+
+```
+cd training
+python3.11 -m venv venv311
+source venv311/bin/activate
+pip install -r requirements-training.txt
+```
+
+Then run the scripts from the activated environment.
+
 The LSTM training pipeline uses the unified frame-level dataset (`my_data_v2.csv`) as the single source of truth. Each row in the dataset represents one frame and contains metadata (`signer_id`, `recording_id`, `label`, `frame_number`) along with 136 landmark-based features extracted from MediaPipe.
 
 ## Sequence Generation

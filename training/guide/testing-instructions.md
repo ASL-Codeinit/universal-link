@@ -2,18 +2,21 @@
 
 ## Prerequisites
 
+Create and activate a Python 3.11 virtual environment, then install dependencies:
+
+```
+cd training
+python3.11 -m venv venv311
+source venv311/bin/activate
+pip install -r requirements-training.txt
+```
+
 Ensure:
 
 ```
 lstm_model.pt
 ```
 exists in the training directory.
-
-Install dependencies:
-
-```
-pip install -r requirements-training.txt
-```
 
 ---
 

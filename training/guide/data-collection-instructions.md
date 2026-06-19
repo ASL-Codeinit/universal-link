@@ -1,8 +1,19 @@
 # SignLink Data Collection Instructions
 
-1. Activate the Python virtual environment and run the script from the `training` folder:
+## Environment Setup
+
+From the repository root, create and activate a Python 3.11 virtual environment and install dependencies:
+
+```
+cd training
+python3.11 -m venv venv311
+source venv311/bin/activate
+pip install -r requirements-training.txt
+```
+
+1. Run the data collection script from the `training` folder:
    cd training
-   source ../venv311/bin/activate
+   source venv311/bin/activate
    python collect_data.py
 
 2. Enter your signer ID when prompted.
