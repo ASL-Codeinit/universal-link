@@ -3,3 +3,6 @@ node_modules/
 .env.local
 .DS_Store
 backend/venv/
+__pycache__/
+*.pyc
+frontend/node_modules/
