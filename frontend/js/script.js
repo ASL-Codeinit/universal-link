@@ -492,18 +492,21 @@ function onHandsDetected(results) {
             let leftFeatures  = new Array(68).fill(0);  // default zeros
             let rightFeatures = new Array(68).fill(0);  // default zeros
 
-            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
                 const landmarks  = results.multiHandLandmarks[i];
-                const handedness = results.multiHandedness[i].label;
+                const rawHandedness = results.multiHandedness[i].label;
+                // MediaPipe JS reads the unflipped camera feed, but training data
+                // (lstm_test.py / collect_data.py) used cv2.flip(frame, 1) before
+                // processing — so handedness labels are mirror-opposite. Swap here
+                // to match what the model was trained on.
+                const handedness = rawHandedness === 'Left' ? 'Right' : 'Left';
                 const features   = extractRobustFeatures(landmarks);
-
                 if (handedness === 'Left') {
                     leftFeatures = features;
                 } else if (handedness === 'Right') {
                     rightFeatures = features;
                 }
             }
-
             // combine both hands into 136 values
             const allFeatures = [...leftFeatures, ...rightFeatures];
 
@@ -516,16 +519,37 @@ function onHandsDetected(results) {
             const indicator = document.getElementById('localDetection');
             indicator.classList.add('inactive');
             indicator.innerHTML = '<span class="pulse-dot"></span><span>Detecting...</span>';
+            resetServerBuffer();
         }
     }
+}
+
+// Clears the backend's sliding window for this session when no hand
+// is visible — prevents splicing unrelated gesture fragments together.
+let lastResetTime = 0;
+function resetServerBuffer() {
+    const now = Date.now();
+    if (now - lastResetTime < 500) return; // avoid spamming the endpoint every frame
+    lastResetTime = now;
+
+    fetch('http://127.0.0.1:5000/reset-buffer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: roomId })
+    }).catch(err => console.error('Reset buffer failed:', err));
 }
 
 // Extract landmark data
 // Extract robust features matching Python training format
 function extractRobustFeatures(landmarks) {
     // step 1 - center on wrist
-    const wrist = landmarks[0];
-    let centered = landmarks.map(lm => ({
+     const mirrored = landmarks.map(lm => ({
+        x: 1 - lm.x,
+        y: lm.y,
+        z: lm.z
+    }));
+    const wrist = mirrored[0];
+    let centered = mirrored.map(lm => ({
         x: lm.x - wrist.x,
         y: lm.y - wrist.y,
         z: lm.z - wrist.z
@@ -616,7 +640,7 @@ console.log('  Mode:', API_CONFIG.ACTIVE);
 console.log('  Endpoint:', getAPIUrl());
 
 let lastPredictionTime = 0;
-const PREDICTION_INTERVAL = 1000; // 1 prediction per second
+const PREDICTION_INTERVAL = 0; // 1 prediction per second
 let currentPrediction = null;
 let apiCallCount = 0;
 let successfulCalls = 0;
@@ -626,9 +650,9 @@ let failedCalls = 0;
 async function sendToMLModel(combinedLandmarks, handednessArray) {
     const now = Date.now();
     
-    if (now - lastPredictionTime < PREDICTION_INTERVAL) {
-        return;
-    }
+    // if (now - lastPredictionTime < PREDICTION_INTERVAL) {
+    //     return;
+    // }
     
     lastPredictionTime = now;
     apiCallCount++;
@@ -636,9 +660,10 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
     console.log(`📤 Sending to ML model (Call #${apiCallCount}) | Total values: ${combinedLandmarks.length}`);
     
     try {
-        const requestPayload = {
+                const requestPayload = {
             landmarks: combinedLandmarks, // Will natively be 68 or 136 elements
             handedness: handednessArray,  // Array structure: e.g., ["Left"] or ["Right", "Left"]
+            session_id: roomId,           // isolates this user's sliding window buffer on the backend
             timestamp: now
         };
         
