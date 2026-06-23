@@ -1,14 +1,17 @@
-fastapi
-uvicorn
-joblib
-scikit-learn
-numpy
-python-dotenv
-groq
-pydantic
+# FastAPI ASL Backend 
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+groq>=0.9.0
+# torch>=2.2.0   :  # install torch separately: pip install torch --index-url https://download.pytorch.org/whl/cpu
+numpy==1.26.4
+
+# Flask / Gunicorn (existing)
 flask==3.0.0
 flask-cors==4.0.0
-joblib==1.4.2
-scikit-learn==1.5.2
-numpy==1.26.4
 gunicorn==21.2.0
+
+# ML / Data (existing) 
+scikit-learn==1.5.2
+joblib==1.4.2
