@@ -11,7 +11,7 @@
     <!-- Header -->
     <div class="header">
         <div class="header-left">
-            <div class="logo-small">🤟</div>
+            <div class="logo-small" aria-label="SignLink logo"></div>
             <div class="header-info">
                 <h2 id="userNameDisplay">Loading...</h2>
                 <div class="room-code">
@@ -72,8 +72,12 @@
         <div class="transcript-panel close-drawer" id="chatDrawer">
             <div class="chat-section">
                 <div class="chat-header">
-                    <h3>📝 Transcript</h3>
+                    <h3>Transcript</h3>
                     <button class="clear-chat-btn" onclick="clearTranscript()">Clear</button>
+                </div>
+                <div class="word-buffer-panel">
+                    <div class="word-buffer-label">Sentence Builder</div>
+                    <div class="word-buffer-content" id="wordBufferBox">Waiting for detected words...</div>
                 </div>
                 <div class="chat-messages" id="chatMessages">
                     <div class="chat-empty">Sign language translations will appear here...</div>

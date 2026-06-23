@@ -5,7 +5,6 @@ After the dataset preparation and LSTM model training were completed, the next s
 ---
 
 ## FastAPI Backend Integration
-
 The previous backend was designed for a Random Forest model, where each frame was classified independently.
 
 Since the LSTM model requires motion information instead of a single frame, the backend was redesigned to work with sequences.

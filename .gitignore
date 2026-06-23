@@ -23,3 +23,5 @@ y.npy
 plan.md
 
 *.pkl
+
+backend/__pycache__/

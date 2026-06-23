@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize media after DOM is ready
     initializeMedia();
+    updateWordBufferUI();
 });
 
 // --- ROOM ID MANAGEMENT ---
@@ -485,8 +486,13 @@ function onHandsDetected(results) {
         // only process for ML if user is signer
         if (userMode === 'signer') {
             const indicator = document.getElementById('localDetection');
+            const hudEl = document.getElementById('localLiveHUD');
             indicator.classList.remove('inactive');
             indicator.innerHTML = '<span class="pulse-dot"></span><span>Detecting ✓</span>';
+            if (hudEl) {
+                hudEl.innerText = 'ML: Detecting...';
+                hudEl.style.color = '#ffffff';
+            }
 
             // build 136 feature array — left hand + right hand
             let leftFeatures  = new Array(68).fill(0);  // default zeros
@@ -517,8 +523,13 @@ function onHandsDetected(results) {
     } else {
         if (userMode === 'signer') {
             const indicator = document.getElementById('localDetection');
+            const hudEl = document.getElementById('localLiveHUD');
             indicator.classList.add('inactive');
             indicator.innerHTML = '<span class="pulse-dot"></span><span>Detecting...</span>';
+            if (hudEl) {
+                hudEl.innerText = 'ML: No hands';
+                hudEl.style.color = '#bbbbbb';
+            }
             resetServerBuffer();
         }
     }
@@ -658,6 +669,11 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
     apiCallCount++;
     
     console.log(`📤 Sending to ML model (Call #${apiCallCount}) | Total values: ${combinedLandmarks.length}`);
+    const hudEl = document.getElementById('localLiveHUD');
+    if (hudEl) {
+        hudEl.innerText = 'ML: sending...';
+        hudEl.style.color = '#ffffff';
+    }
     
     try {
                 const requestPayload = {
@@ -690,7 +706,7 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
         successfulCalls++;
         
         sendPredictionToRemote(prediction);
-        // displayLocalSubtitles(prediction);
+        displayLocalSubtitles(prediction);
         const hudEl = document.getElementById('localLiveHUD');
         if (hudEl && prediction.sign) {
             const pct = (prediction.confidence * 100).toFixed(0);
@@ -710,6 +726,11 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
         console.log(`Handedness arrangement for this frame:`, handednessArray);
         
     } catch (error) {
+        const hudEl = document.getElementById('localLiveHUD');
+        if (hudEl) {
+            hudEl.innerText = 'ML: error';
+            hudEl.style.color = '#ff5252';
+        }
         console.error('❌ API Error:', error.message);
         failedCalls++;
         updateAPIStats();
@@ -781,6 +802,23 @@ function handleIncomingPrediction(prediction) {
     }
 }
 
+function updateWordBufferUI() {
+    const wordBufferBox = document.getElementById('wordBufferBox');
+    if (!wordBufferBox) return;
+
+    if (wordStack.length === 0) {
+        wordBufferBox.innerHTML = 'Waiting for detected words...';
+        return;
+    }
+
+    wordBufferBox.innerHTML = wordStack.map(word => `<span>${word}</span>`).join('');
+}
+
+function clearWordBufferUI() {
+    wordStack = [];
+    updateWordBufferUI();
+}
+
 function pushToStack(word) {
     const cleanWord = word.trim();
 
@@ -788,15 +826,7 @@ function pushToStack(word) {
     if (wordStack.length === 0 || wordStack[wordStack.length - 1] !== cleanWord) {
         wordStack.push(cleanWord);
         console.log("🎒 Stack updated:", wordStack);
-        
-        // 🚨 OVERRIDE LOCAL SUBTITLES: Show the running stack buffer over your video instead of a single word!
-        const localSubtitleText = document.getElementById('localSubtitleText');
-        if (localSubtitleText) {
-            localSubtitleText.innerHTML = `
-                <span style="color: #ffa500; font-size: 14px; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px;">Drafting Sentence...</span>
-                ${wordStack.join(' ')}
-            `;
-        }
+        updateWordBufferUI();
     }
 }
 
@@ -819,15 +849,6 @@ window.addEventListener('keydown', async (event) => {
             
             if (data.sentence) {
                 console.log("✨ Translation Result:", data.sentence);
-                
-                // 🚨 UPDATE THE SUBTITLE OVERLAY: Swap the stack out for your clean AI sentence!
-                const localSubtitleText = document.getElementById('localSubtitleText');
-                if (localSubtitleText) {
-                    localSubtitleText.innerHTML = `
-                        <span style="color: #4CAF50; font-size: 14px; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px;">✨ Groq AI</span>
-                        <span style="color: #fff;">${data.sentence}</span>
-                    `;
-                }
 
                 // Push the clean translation to your side transcript log box too!
                 addToTranscript(data.sentence);
@@ -840,7 +861,7 @@ window.addEventListener('keydown', async (event) => {
                 }
 
                 // Clear out working memory so you can build your next sentence from scratch
-                wordStack = [];
+                clearWordBufferUI();
                 lastAddedWord = "";
             }
         } catch (err) {
