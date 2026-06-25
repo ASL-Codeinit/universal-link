@@ -44,6 +44,9 @@ X_train, X_test, y_train, y_test = train_test_split(
     stratify=y
 )
 
+np.save("X_test.npy", X_test)
+np.save("y_test.npy", y_test)
+
 print(f"Train samples: {len(X_train)}")
 print(f"Test samples: {len(X_test)}")
 print(f"Classes: {num_classes}")
