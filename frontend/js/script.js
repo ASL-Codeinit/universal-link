@@ -640,7 +640,7 @@ async function startHandDetection() {
 const API_BASE =
     window.location.hostname === "localhost"
         ? "http://localhost:8000"
-        : "https://YOUR-BACKEND-URL.azurecontainerapps.io";
+        : "https://universal-link-backend.kindbay-309802f0.southeastasia.azurecontainerapps.io";
 
 const API_CONFIG = {
     PREDICT: `${API_BASE}/predict`,
