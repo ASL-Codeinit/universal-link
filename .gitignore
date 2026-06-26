@@ -6,8 +6,10 @@ node_modules/
 
 # Virtual environments
 venv/
+.venv/
 venv311/
 training/venv311/
+training/venv_training/
 backend/venv/
 
 

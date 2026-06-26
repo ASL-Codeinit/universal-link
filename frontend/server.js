@@ -109,6 +109,5 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`\n🚀 ASL Video Call Server Running`);
-    console.log(`📡 Signaling Server: http://localhost:${PORT}`);
-    console.log(`🌐 Share with friends: http://localhost:${PORT}\n`);
+    console.log(`📡 Signaling Server running on port ${PORT}`);
 });

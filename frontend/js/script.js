@@ -7,6 +7,13 @@ let userMode = 'speaker';
 let roomId = null;
 let socket = null;
 
+// 1. Maintain the runtime state buffer in your script scope
+let wordStack = []; 
+let currentBestPrediction = "";
+let currentBestConfidence = 0;
+let lastAcceptedTime = 0;
+const WORD_COOLDOWN = 700; // 1 second
+
 // Control button states
 let isMicMuted = false;
 let isCameraMuted = false;
@@ -490,7 +497,7 @@ function onHandsDetected(results) {
             indicator.classList.remove('inactive');
             indicator.innerHTML = '<span class="pulse-dot"></span><span>Detecting ✓</span>';
             if (hudEl) {
-                hudEl.innerText = 'ML: Detecting...';
+                hudEl.innerText = 'Reading sign...';
                 hudEl.style.color = '#ffffff';
             }
 
@@ -530,6 +537,12 @@ function onHandsDetected(results) {
                 hudEl.innerText = 'ML: No hands';
                 hudEl.style.color = '#bbbbbb';
             }
+            if (currentBestPrediction !== "") {
+                pushToStack(currentBestPrediction);
+                predictionHistory = [];
+                currentBestPrediction = "";
+                currentBestConfidence = 0;
+            }
             resetServerBuffer();
         }
     }
@@ -543,7 +556,7 @@ function resetServerBuffer() {
     if (now - lastResetTime < 500) return; // avoid spamming the endpoint every frame
     lastResetTime = now;
 
-    fetch('http://127.0.0.1:5000/reset-buffer', {
+    fetch(API_CONFIG.RESET, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: roomId })
@@ -624,36 +637,27 @@ async function startHandDetection() {
 // ============================================================
 
 // 🔥 UPDATED API CONFIGURATION
+const API_BASE =
+    window.location.hostname === "localhost"
+        ? "http://localhost:8000"
+        : "https://YOUR-BACKEND-URL.azurecontainerapps.io";
+
 const API_CONFIG = {
-    MOCK_API: 'https://jsonplaceholder.typicode.com/posts',
-    LOCAL_API: 'http://localhost:5000/predict',
-    
-    // 👇 REPLACE THIS WITH YOUR ACTUAL RENDER URL AFTER DEPLOYMENT
-    PRODUCTION_API: 'https://your-app-name.onrender.com/predict',
-    
-    // 👇 SET TO 'PRODUCTION' AFTER DEPLOYING TO RENDER
-    // Options: 'MOCK' (for testing without API), 'LOCAL' (localhost), 'PRODUCTION' (Render)
-    ACTIVE: 'LOCAL'
+    PREDICT: `${API_BASE}/predict`,
+    RESET: `${API_BASE}/reset-buffer`,
+    GRAMMAR: `${API_BASE}/fix-grammar`
 };
 
-function getAPIUrl() {
-    switch(API_CONFIG.ACTIVE) {
-        case 'MOCK': return API_CONFIG.MOCK_API;
-        case 'LOCAL': return API_CONFIG.LOCAL_API;
-        case 'PRODUCTION': return API_CONFIG.PRODUCTION_API;
-        default: return API_CONFIG.MOCK_API;
-    }
-}
 
 // Log current configuration on page load
 console.log('🔗 API Configuration:');
-console.log('  Mode:', API_CONFIG.ACTIVE);
-console.log('  Endpoint:', getAPIUrl());
+console.log('  Endpoint:', API_CONFIG.PREDICT);
 
 let lastPredictionTime = 0;
-const PREDICTION_INTERVAL = 0; // 1 prediction per second
-let currentPrediction = null;
+const PREDICTION_INTERVAL = 150; // 1 prediction per second
 let apiCallCount = 0;
+let predictionHistory = [];
+const HISTORY_SIZE = 5;
 let successfulCalls = 0;
 let failedCalls = 0;
 
@@ -661,9 +665,9 @@ let failedCalls = 0;
 async function sendToMLModel(combinedLandmarks, handednessArray) {
     const now = Date.now();
     
-    // if (now - lastPredictionTime < PREDICTION_INTERVAL) {
-    //     return;
-    // }
+    if (now - lastPredictionTime < PREDICTION_INTERVAL) {
+        return;
+    }
     
     lastPredictionTime = now;
     apiCallCount++;
@@ -683,7 +687,7 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
             timestamp: now
         };
         
-        const response = await fetch(getAPIUrl(), {
+        const response = await fetch(API_CONFIG.PREDICT, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -713,13 +717,12 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
             hudEl.innerText = `ML: ${prediction.sign} (${pct}%)`;
             
             // Optional styling: tint the corner text green if it's high confidence
-            hudEl.style.color = prediction.confidence > 0.50 ? '#4CAF50' : '#fff';
+            hudEl.style.color = prediction.confidence > 0.75 ? '#4CAF50' : '#fff';
         }
         // addToTranscript(prediction.sign);
 
         handleIncomingPrediction(prediction);
         
-        currentPrediction = prediction;
         updateAPIStats();
         console.log("📊 CURRENT FRAME FLAT ARRAY:", JSON.stringify(combinedLandmarks));
     
@@ -735,12 +738,6 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
         failedCalls++;
         updateAPIStats();
         
-        if (API_CONFIG.ACTIVE === 'MOCK') {
-            const mockPrediction = generateMockPrediction(handednessArray);
-            sendPredictionToRemote(mockPrediction);
-            displayLocalSubtitles(mockPrediction);
-            addToTranscript(mockPrediction.sign);
-        }
     }
 }
 
@@ -764,7 +761,7 @@ function displayRemoteSubtitles(prediction) {
     const subtitleText = document.getElementById('remoteSubtitleText');
     
     const confidencePercent = (prediction.confidence * 100).toFixed(0);
-    const confidenceColor = prediction.confidence > 0.8 ? '#4CAF50' : 
+    const confidenceColor = prediction.confidence > 0.75 ? '#4CAF50' : 
                            prediction.confidence > 0.6 ? '#FFA500' : '#FF5252';
     
     const mockBadge = prediction.isMock ? ' <span style="color: #FFA500; font-size: 14px;">[TEST]</span>' : '';
@@ -777,18 +774,34 @@ function displayRemoteSubtitles(prediction) {
     `;
 }
 
-// 1. Maintain the runtime state buffer in your script scope
-let wordStack = []; 
-let currentConfidenceWord = "";
-
-
 function handleIncomingPrediction(prediction) {
     // Save the current highest-confidence word to an intermediate memory variable
-    if (prediction.sign && prediction.sign.toLowerCase() !== 'none' && prediction.confidence > 0.50) {
-        currentConfidenceWord = prediction.sign;
-        
-        // Push it into the tracking stack array
-        pushToStack(currentConfidenceWord);
+    const now = Date.now();
+    if (prediction.sign && prediction.sign.toLowerCase() !== 'none' && prediction.confidence > 0.75 &&
+        now - lastAcceptedTime > WORD_COOLDOWN) {
+        lastAcceptedTime = now;
+        predictionHistory.push(prediction.sign);
+
+        if (predictionHistory.length > HISTORY_SIZE) {
+            predictionHistory.shift();
+        }
+
+        // Count occurrences
+        const counts = {};
+
+        predictionHistory.forEach(word => {
+            counts[word] = (counts[word] || 0) + 1;
+        });
+
+        // Find majority prediction
+        const stablePrediction = Object.keys(counts).reduce((a, b) =>
+            counts[a] > counts[b] ? a : b
+        );
+
+        if (prediction.confidence > currentBestConfidence) {
+            currentBestConfidence = prediction.confidence;
+            currentBestPrediction = stablePrediction;
+        }
         if (socket && roomId) {
             // Combine your array of words into a single readable string (e.g., "Hello Name")
             const currentDraftString = wordStack.join(" ");
@@ -817,17 +830,20 @@ function updateWordBufferUI() {
 function clearWordBufferUI() {
     wordStack = [];
     updateWordBufferUI();
+    updateStackUI();
 }
 
 function pushToStack(word) {
     const cleanWord = word.trim();
 
     // Avoid pushing duplicate consecutive entries to keep logs clean
-    if (wordStack.length === 0 || wordStack[wordStack.length - 1] !== cleanWord) {
-        wordStack.push(cleanWord);
-        console.log("🎒 Stack updated:", wordStack);
-        updateWordBufferUI();
-    }
+    const lastThree = wordStack.slice(-3);
+
+    if (lastThree.includes(cleanWord)) return;
+    wordStack.push(cleanWord);
+
+    updateWordBufferUI();
+    updateStackUI();
 }
 
 window.addEventListener('keydown', async (event) => {
@@ -837,7 +853,7 @@ window.addEventListener('keydown', async (event) => {
         console.log("🧠 Sending stack to Groq:", wordStack);
         
         try {
-            const response = await fetch('http://127.0.0.1:5000/fix-grammar', {
+            const response = await fetch(API_CONFIG.GRAMMAR, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -862,7 +878,10 @@ window.addEventListener('keydown', async (event) => {
 
                 // Clear out working memory so you can build your next sentence from scratch
                 clearWordBufferUI();
-                lastAddedWord = "";
+                predictionHistory = [];
+                currentBestPrediction = "";
+                currentBestConfidence = 0;
+                resetServerBuffer();
             }
         } catch (err) {
             console.error("Network communication failed:", err);
@@ -887,7 +906,7 @@ function displayLocalSubtitles(prediction) {
     const localSubtitleText = document.getElementById('localSubtitleText');
     
     const confidencePercent = (prediction.confidence * 100).toFixed(0);
-    const confidenceColor = prediction.confidence > 0.8 ? '#4CAF50' : 
+    const confidenceColor = prediction.confidence > 0.75 ? '#4CAF50' : 
                            prediction.confidence > 0.6 ? '#FFA500' : '#FF5252';
     
     const mockBadge = prediction.isMock ? ' <span style="color: #FFA500; font-size: 14px;">[TEST]</span>' : '';
@@ -1045,12 +1064,12 @@ function clearTranscript() {
 
 window.testMLAPI = async function() {
     console.log('🧪 Testing ML API...');
-    console.log('Endpoint:', getAPIUrl());
+    console.log('Endpoint:', API_CONFIG.PREDICT);
     
-    const testLandmarks = Array(63).fill(0).map(() => Math.random());
+    const testLandmarks = Array(136).fill(0).map(() => Math.random());
     
     try {
-        const response = await fetch(getAPIUrl(), {
+        const response = await fetch(API_CONFIG.PREDICT, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1069,16 +1088,6 @@ window.testMLAPI = async function() {
     }
 };
 
-window.switchAPIMode = function(mode) {
-    const validModes = ['MOCK', 'LOCAL', 'PRODUCTION'];
-    if (validModes.includes(mode)) {
-        API_CONFIG.ACTIVE = mode;
-        console.log('✅ Switched to', mode);
-        console.log('Endpoint:', getAPIUrl());
-    } else {
-        console.error('❌ Invalid mode. Use: MOCK, LOCAL, or PRODUCTION');
-    }
-};
 
 // ============================================
 // CONTROL BUTTON FUNCTIONS

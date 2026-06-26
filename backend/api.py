@@ -171,10 +171,11 @@ def reset_buffer(data: ResetRequest):
 def health():
     return {
         "status": "healthy",
-        "model_loaded": model is not None,
-        "active_sessions": len(session_buffers)
+        "model": "LSTM",
+        "classes": len(classes),
+        "active_sessions": len(session_buffers),
+        "model_loaded": model is not None
     }
-
 
 @app.post("/fix-grammar")
 async def fix_grammar(data: GrammarRequest):
