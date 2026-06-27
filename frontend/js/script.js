@@ -12,9 +12,9 @@ let wordStack = [];
 let currentBestPrediction = "";
 let currentBestConfidence = 0;
 let missingHandFrames = 0;
-const RESET_AFTER_FRAMES = 10;
+const RESET_AFTER_FRAMES = 3;
 let lastAcceptedTime = 0;
-const WORD_COOLDOWN = 350; // 1 second
+const WORD_COOLDOWN = 700; // 1 second
 
 // Control button states
 let isMicMuted = false;
@@ -661,10 +661,10 @@ console.log('🔗 API Configuration:');
 console.log('  Endpoint:', API_CONFIG.PREDICT);
 
 let lastPredictionTime = 0;
-const PREDICTION_INTERVAL = 150; // 1 prediction per second
+const PREDICTION_INTERVAL = 100; // 1 prediction per second
 let apiCallCount = 0;
 let predictionHistory = [];
-const HISTORY_SIZE = 5;
+const HISTORY_SIZE = 3;
 let successfulCalls = 0;
 let failedCalls = 0;
 
