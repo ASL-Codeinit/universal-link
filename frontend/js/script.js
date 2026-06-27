@@ -780,6 +780,13 @@ function displayRemoteSubtitles(prediction) {
 function handleIncomingPrediction(prediction) {
     // Save the current highest-confidence word to an intermediate memory variable
     const now = Date.now();
+    console.log({
+    sign: prediction.sign,
+    buffering: prediction.buffering,
+    confidence: prediction.confidence,
+    cooldownElapsed: now - lastAcceptedTime,
+    threshold: WORD_COOLDOWN
+    });
     if (prediction.sign && prediction.sign.toLowerCase() !== 'none' &&
     !prediction.buffering && prediction.confidence > 0.65 &&
         now - lastAcceptedTime > WORD_COOLDOWN) {
