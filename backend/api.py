@@ -123,9 +123,12 @@ def predict(data: LandmarkRequest):
     buffer.append(landmarks)
 
     print(data.session_id)
+    print(
+    f"Session={data.session_id} | Buffer={len(buffer)}/{SEQUENCE_LENGTH}")
 
     # not enough frames yet — still buffering
     if len(buffer) < SEQUENCE_LENGTH:
+        print("Buffering...")
         return {
             "sign": "...",
             "confidence": 0.0,
@@ -145,7 +148,9 @@ def predict(data: LandmarkRequest):
             confidence, predicted = torch.max(probs, dim=1)
             confidence = float(confidence.item())
             sign = classes[predicted.item()]
-            print(sign, confidence)
+            print(
+    f"Prediction: {sign} | Confidence: {confidence:.3f}"
+            )
 
         return {
             "sign": sign,

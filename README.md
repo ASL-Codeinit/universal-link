@@ -1,6 +1,9 @@
 # Universal Link
 
-Universal Link is a real-time sign language video call platform built to translate ASL gestures into live text and structured sentences. It combines a Python-powered LSTM inference backend, a Node.js WebRTC frontend, and grammar correction via Groq LLM.
+Universal Link is a real-time sign language video call platform that translates American Sign Language (ASL) gestures into live text and grammatically refined sentences. The system combines browser-based hand tracking with a temporal LSTM gesture recognition model, real-time WebRTC communication, and AI-powered grammar correction.
+
+The application is built as a full-stack system consisting of a FastAPI inference backend, a Node.js + Socket.IO signaling server, and a browser frontend using MediaPipe Hands. The entire application is containerized with Docker and deployed on Microsoft Azure Container Apps.
+
 
 ---
 
@@ -16,11 +19,50 @@ Universal Link is a real-time sign language video call platform built to transla
 
 ## Technical highlights
 
-- Python backend using **FastAPI**, **PyTorch**, and **Groq** for smart grammar correction
-- Frontend built with **Socket.IO**, **Express**, and browser-based **MediaPipe Hands**
-- Rolling sequence buffer architecture for **LSTM-based gesture prediction**
-- Session-isolated prediction buffers to support multiple simultaneous users
-- Clean UI with a professional muted grey/green theme and live transcript panel
+* Real-time WebRTC video communication with Socket.IO signaling
+* Browser-based hand tracking using MediaPipe Hands
+* Temporal LSTM gesture recognition using rolling 20-frame landmark sequences
+* FastAPI inference backend built with PyTorch
+* Groq-powered grammar correction for detected sign sequences
+* Session-isolated prediction buffers supporting multiple simultaneous conversations
+* Dockerized frontend and backend
+* Cloud deployment on Microsoft Azure Container Apps
+* Azure Container Registry (ACR) for container image management
+
+
+## System Architecture
+
+```text
+Camera
+   │
+   ▼
+MediaPipe Hands
+   │
+   ▼
+Feature Extraction (136 features/frame)
+   │
+   ▼
+FastAPI Backend
+   │
+Rolling 20-frame Buffer
+   │
+   ▼
+LSTM Model (PyTorch)
+   │
+   ▼
+Predicted Sign
+   │
+   ├────────► Live subtitles
+   │
+   ▼
+Sentence Builder
+   │
+   ▼
+Groq Grammar Correction
+   │
+   ▼
+Final Sentence
+```
 
 ---
 
@@ -98,15 +140,16 @@ export GROQ_API_KEY="your_api_key_here"
 
 ### 4. Start the backend API
 
-From the repo root:
+Run the FastAPI server on any available port:
 
 ```bash
-source venv/bin/activate
-cd backend
-python -m uvicorn api:app --reload --host 0.0.0.0 --port 5000
+python -m uvicorn api:app --reload --host 0.0.0.0 --port <PORT>
 ```
 
-> Note: the frontend currently uses port `5000` by default. If you run the backend on another port, update `frontend/js/script.js` and `API_CONFIG.LOCAL_API` accordingly.
+For local development, update the `API_BASE` value in `frontend/js/script.js` to match the backend URL if necessary.
+
+In production, the frontend automatically detects the environment and communicates with the deployed Azure backend.
+
 
 ### 5. Start the frontend app
 
@@ -118,6 +161,53 @@ npm start
 Then open `http://localhost:3000` in your browser.
 
 ---
+## Docker Deployment
+
+Both frontend and backend are fully containerized.
+
+Build and start the application locally:
+
+```bash
+docker compose up --build
+```
+
+The application will be available at:
+
+* Frontend: `http://localhost:3000`
+* Backend: `http://localhost:8000`
+
+The same Docker images are deployed to Microsoft Azure Container Apps through Azure Container Registry.
+
+
+## Cloud Deployment
+
+The production deployment uses:
+
+* Microsoft Azure Container Apps
+* Azure Container Registry (ACR)
+* Docker
+* FastAPI
+* Node.js
+* Azure Container App Secrets for secure `GROQ_API_KEY` management
+
+Both frontend and backend are deployed independently, allowing each service to be updated without affecting the other.
+Azure Container App
+│
+├── universal-link-frontend
+│      │
+│      ├── HTML
+│      ├── CSS
+│      ├── JS
+│      ├── Socket.IO
+│      └── WebRTC
+│
+└── universal-link-backend
+       │
+       ├── FastAPI
+       ├── PyTorch
+       ├── LSTM
+       ├── Groq
+       └── Prediction API
 
 ## Recommended development workflow
 
@@ -128,6 +218,34 @@ Then open `http://localhost:3000` in your browser.
 - Use the training guides in `training/guide/` if you want to extend the model or collect new data
 
 ---
+
+## Recent Improvements
+
+### Deployment
+
+* Dockerized both the FastAPI backend and Node.js frontend.
+* Deployed the application on Microsoft Azure Container Apps.
+* Stored container images in Azure Container Registry (ACR).
+* Added automatic switching between local and production backend URLs.
+* Configured the Groq API key securely using Azure Container App secrets.
+
+### Inference Improvements
+
+* Fixed feature extraction to match the preprocessing used during model training.
+* Improved temporal buffer handling to prevent unnecessary resets caused by brief hand tracking failures.
+* Tuned prediction thresholds and cooldowns for more responsive real-time recognition.
+* Added backend buffer status to the frontend for improved prediction handling and debugging.
+* Fixed runtime issues affecting subtitle updates and sentence generation.
+
+
+## Future Work
+
+* Improve prediction accuracy with a larger ASL training dataset.
+* Enhance temporal smoothing for more stable real-time predictions.
+* Add TURN server support for improved WebRTC connectivity.
+* Extend the supported ASL vocabulary and sentence construction.
+* Optimize inference speed and reduce container image size.
+* Improve the mobile experience and overall UI.
 
 ## Notes
 

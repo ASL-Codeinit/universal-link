@@ -11,8 +11,10 @@ let socket = null;
 let wordStack = []; 
 let currentBestPrediction = "";
 let currentBestConfidence = 0;
+let missingHandFrames = 0;
+const RESET_AFTER_FRAMES = 10;
 let lastAcceptedTime = 0;
-const WORD_COOLDOWN = 700; // 1 second
+const WORD_COOLDOWN = 350; // 1 second
 
 // Control button states
 let isMicMuted = false;
@@ -478,7 +480,7 @@ function onHandsDetected(results) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        
+        missingHandFrames = 0;
         // always draw skeleton for all detected hands
         for (let i = 0; i < results.multiHandLandmarks.length; i++) {
             const landmarks = results.multiHandLandmarks[i];
@@ -528,6 +530,7 @@ function onHandsDetected(results) {
         }
 
     } else {
+        missingHandFrames++;
         if (userMode === 'signer') {
             const indicator = document.getElementById('localDetection');
             const hudEl = document.getElementById('localLiveHUD');
@@ -537,13 +540,22 @@ function onHandsDetected(results) {
                 hudEl.innerText = 'ML: No hands';
                 hudEl.style.color = '#bbbbbb';
             }
-            if (currentBestPrediction !== "") {
-                pushToStack(currentBestPrediction);
+
+            // Only act after 10 consecutive missing frames
+            if (missingHandFrames >= RESET_AFTER_FRAMES) {
+                // Push best word to stack before wiping state
+                if (currentBestPrediction !== "") {
+                    pushToStack(currentBestPrediction);
+                }
+                // Reset ALL local state
                 predictionHistory = [];
                 currentBestPrediction = "";
                 currentBestConfidence = 0;
+                missingHandFrames = 0;
+
+                // Only reset backend buffer AFTER local state is cleared
+                resetServerBuffer();
             }
-            resetServerBuffer();
         }
     }
 }
@@ -567,18 +579,13 @@ function resetServerBuffer() {
 // Extract robust features matching Python training format
 function extractRobustFeatures(landmarks) {
     // step 1 - center on wrist
-     const mirrored = landmarks.map(lm => ({
-        x: 1 - lm.x,
-        y: lm.y,
-        z: lm.z
-    }));
-    const wrist = mirrored[0];
-    let centered = mirrored.map(lm => ({
+    const flipped = landmarks.map(lm => ({ x: 1 - lm.x, y: lm.y, z: lm.z }));
+    const wrist = flipped[0];
+    let centered = flipped.map(lm => ({
         x: lm.x - wrist.x,
         y: lm.y - wrist.y,
         z: lm.z - wrist.z
     }));
-
     // step 2 - find max value (normalise by hand size)
     let maxVal = Math.max(...centered.flatMap(p => 
         [Math.abs(p.x), Math.abs(p.y), Math.abs(p.z)]
@@ -673,6 +680,7 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
     apiCallCount++;
     
     console.log(`📤 Sending to ML model (Call #${apiCallCount}) | Total values: ${combinedLandmarks.length}`);
+    
     const hudEl = document.getElementById('localLiveHUD');
     if (hudEl) {
         hudEl.innerText = 'ML: sending...';
@@ -680,10 +688,10 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
     }
     
     try {
-                const requestPayload = {
-            landmarks: combinedLandmarks, // Will natively be 68 or 136 elements
-            handedness: handednessArray,  // Array structure: e.g., ["Left"] or ["Right", "Left"]
-            session_id: roomId,           // isolates this user's sliding window buffer on the backend
+        const requestPayload = {
+            landmarks: combinedLandmarks,
+            handedness: handednessArray,
+            session_id: roomId,
             timestamp: now
         };
         
@@ -701,9 +709,13 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
         }
         
         const predictionData = await response.json();
+
+        if (predictionData.buffering) {
+            console.log(`⏳ Buffering: ${predictionData.buffer_size}/20 frames`);
+        }
+
         console.log("Backend response:", predictionData);
         
-        // Pass array along for resolution matching parsing engine requirements
         const prediction = parseFriendResponse(predictionData, handednessArray);
         
         console.log('✅ Prediction received:', prediction);
@@ -711,25 +723,17 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
         
         sendPredictionToRemote(prediction);
         displayLocalSubtitles(prediction);
-        const hudEl = document.getElementById('localLiveHUD');
+
         if (hudEl && prediction.sign) {
             const pct = (prediction.confidence * 100).toFixed(0);
             hudEl.innerText = `ML: ${prediction.sign} (${pct}%)`;
-            
-            // Optional styling: tint the corner text green if it's high confidence
             hudEl.style.color = prediction.confidence > 0.75 ? '#4CAF50' : '#fff';
         }
-        // addToTranscript(prediction.sign);
 
         handleIncomingPrediction(prediction);
-        
         updateAPIStats();
-        console.log("📊 CURRENT FRAME FLAT ARRAY:", JSON.stringify(combinedLandmarks));
-    
-        console.log(`Handedness arrangement for this frame:`, handednessArray);
         
     } catch (error) {
-        const hudEl = document.getElementById('localLiveHUD');
         if (hudEl) {
             hudEl.innerText = 'ML: error';
             hudEl.style.color = '#ff5252';
@@ -737,7 +741,6 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
         console.error('❌ API Error:', error.message);
         failedCalls++;
         updateAPIStats();
-        
     }
 }
 
@@ -777,7 +780,8 @@ function displayRemoteSubtitles(prediction) {
 function handleIncomingPrediction(prediction) {
     // Save the current highest-confidence word to an intermediate memory variable
     const now = Date.now();
-    if (prediction.sign && prediction.sign.toLowerCase() !== 'none' && prediction.confidence > 0.75 &&
+    if (prediction.sign && prediction.sign.toLowerCase() !== 'none' &&
+    !prediction.buffering && prediction.confidence > 0.65 &&
         now - lastAcceptedTime > WORD_COOLDOWN) {
         lastAcceptedTime = now;
         predictionHistory.push(prediction.sign);
@@ -964,11 +968,12 @@ function parseFriendResponse(responseData, handedness) {
     }
     
     return {
-        sign: sign,
-        confidence: parseFloat(confidence),
-        handedness: handedness,
-        timestamp: Date.now()
-    };
+    sign: sign,
+    confidence: parseFloat(confidence),
+    handedness: handedness,
+    buffering: responseData.buffering || false,
+    timestamp: Date.now()
+    };  
 }
 
 // Generate mock predictions for testing
