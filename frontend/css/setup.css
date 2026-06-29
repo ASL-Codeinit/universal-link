@@ -1,0 +1,271 @@
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            /* ── exact palette from call.css ── */
+            --bg:          #121619;
+            --surface:     #141820;
+            --surface2:    #171d22;
+            --surface3:    #1b2125;
+            --border:      rgba(119, 149, 121, 0.12);
+            --border2:     rgba(93, 134, 100, 0.22);
+
+            --green:       #4CAF50;
+            --green-soft:  #8ebc8f;
+            --green-dim:   rgba(123, 191, 150, 0.17);
+            --green-muted: rgba(123, 191, 150, 0.25);
+            --text:        #e4e7ea;
+            --text-soft:   #bfd8b3;
+            --text-muted:  #a9b7a0;
+            --muted:       #8b9b94;
+
+            --amber:       #d4a03a;
+            --amber-dim:   rgba(212, 160, 58, 0.12);
+            --red:         #c2615d;
+            --red-dim:     rgba(194, 97, 93, 0.18);
+
+            /* signer/listener reuse the call palette greens */
+            --signer:      #7bbf96;
+            --listener:    #a9bfaa;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px 16px;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px 28px;
+            width: 100%;
+            max-width: 460px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* ── Brand header ── */
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .logo-small {
+            width: 38px; height: 38px;
+            background-image: url('sign-language.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-color: rgba(224, 236, 218, 0.85);
+            border-radius: 8px;
+            border: 1px solid rgba(138, 163, 136, 0.18);
+            flex-shrink: 0;
+        }
+        .brand h1 {
+            font-size: 19px;
+            font-weight: 700;
+            color: var(--text-soft);
+            letter-spacing: -.2px;
+        }
+        .brand p {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 1px;
+            font-weight: 500;
+            letter-spacing: .3px;
+        }
+
+        /* ── Camera preview ── */
+        .camera-block {
+            position: relative;
+            background: #12161b;
+            border-radius: 16px;
+            overflow: hidden;
+            aspect-ratio: 16/9;
+            border: 1px solid var(--border);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+        }
+        #previewVideo {
+            width: 100%; height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            display: block;
+        }
+        .cam-permission-msg {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            background: rgba(18, 22, 27, 0.82);
+            backdrop-filter: blur(8px);
+            font-size: 13px;
+            color: var(--muted);
+            text-align: center;
+            padding: 16px;
+        }
+        .cam-permission-msg .icon { font-size: 26px; }
+        .cam-permission-msg.hidden { display: none; }
+
+        /* ── Identity strip ── */
+        .identity {
+            background: rgba(23, 29, 34, 0.95);
+            border: 1px solid var(--border2);
+            border-radius: 12px;
+            padding: 14px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .identity-left { display: flex; flex-direction: column; gap: 3px; }
+        .identity-label {
+            font-size: 11px;
+            color: var(--muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .7px;
+        }
+        .identity-name {
+            font-size: 17px;
+            font-weight: 600;
+            color: var(--text-soft);
+        }
+
+        .role-badge {
+            padding: 5px 13px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        /* Both roles live in the green family — matches call.css's green-only palette */
+        .role-badge.signer {
+            background: rgba(123, 191, 150, 0.17);
+            color: #7bbf96;
+            border: 1px solid rgba(123, 191, 150, 0.32);
+        }
+        .role-badge.listener {
+            background: rgba(169, 183, 170, 0.12);
+            color: var(--listener);
+            border: 1px solid rgba(169, 183, 170, 0.25);
+        }
+
+        /* ── Backend status card ── */
+        .status-block {
+            background: rgba(23, 29, 34, 0.95);
+            border: 1px solid var(--border2);
+            border-radius: 12px;
+            padding: 14px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .status-icon {
+            width: 34px; height: 34px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            flex-shrink: 0;
+            transition: background .3s;
+        }
+        .status-icon.checking { background: var(--amber-dim); }
+        .status-icon.live     { background: rgba(123, 191, 150, 0.14); }
+        .status-icon.error    { background: var(--red-dim); }
+
+        .status-text { display: flex; flex-direction: column; gap: 2px; }
+        .status-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-soft);
+        }
+        .status-sub {
+            font-size: 11px;
+            color: var(--muted);
+            font-weight: 500;
+        }
+
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+        .status-dot.checking { background: var(--amber);   animation: pulse 1.4s ease infinite; }
+        .status-dot.live     { background: var(--green); }
+        .status-dot.error    { background: var(--red); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1;  transform: scale(1); }
+            50%       { opacity: .4; transform: scale(.82); }
+        }
+
+        /* ── Progress bar ── */
+        .progress-wrap {
+            height: 2px;
+            background: rgba(119, 149, 121, 0.12);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 1px;
+            display: none;
+        }
+        .progress-wrap.visible { display: block; }
+        .progress-bar {
+            height: 100%;
+            background: var(--amber);
+            border-radius: 2px;
+            width: 0%;
+            transition: width .4s ease;
+        }
+
+        /* ── Join button — mirrors .control-btn.mute style ── */
+        .join-btn {
+            width: 100%;
+            padding: 14px;
+            border-radius: 12px;
+            border: none;
+            font-family: 'Poppins', sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            letter-spacing: .2px;
+        }
+        .join-btn:disabled {
+            background: rgba(23, 29, 34, 0.95);
+            color: var(--muted);
+            border: 1px solid var(--border2);
+            cursor: not-allowed;
+        }
+        .join-btn:not(:disabled) {
+            background: rgba(123, 191, 150, 0.14);
+            color: #eaf3ea;
+            border: 1px solid rgba(123, 191, 150, 0.28);
+        }
+        .join-btn:not(:disabled):hover {
+            background: rgba(123, 191, 150, 0.22);
+            transform: translateY(-1px);
+        }
+        .join-btn:not(:disabled):active { transform: scale(.98); }
+
+        /* ── Camera error note ── */
+        .cam-error-note {
+            font-size: 12px;
+            color: var(--red);
+            text-align: center;
+            display: none;
+            margin-top: -8px;
+        }
+        .cam-error-note.visible { display: block; }
