@@ -1,4 +1,3 @@
-
 // USER MODE SETUP FROM SESSION STORAGE
 
 // Global variables
@@ -12,8 +11,16 @@ let currentBestPrediction = "";
 let currentBestConfidence = 0;
 let missingHandFrames = 0;
 const RESET_AFTER_FRAMES = 3;
-let lastAcceptedTime = 0;
-const WORD_COOLDOWN = 700; // 1 second
+
+// --- Stability-based acceptance: majority vote over a sliding window ---
+// We look at the last HISTORY_SIZE predictions; once at least
+// MAJORITY_REQUIRED of them agree, we commit that word immediately
+// (no waiting for the *next* word to stabilize). This tolerates an
+// occasional single-frame misclassification without lagging behind.
+const HISTORY_SIZE = 5;
+const MAJORITY_REQUIRED = 4;
+let lastAcceptedPrediction = "";
+let currentStablePrediction = ""; // what's currently shown on the local HUD
 
 // Control button states
 let isMicMuted = false;
@@ -464,6 +471,22 @@ function initializeMediaPipe() {
     startHandDetection();
 }
 
+function setDetectionIndicatorState(isActive) {
+    const indicator = document.getElementById('localDetection');
+    const hudEl = document.getElementById('localLiveHUD');
+
+    if (indicator) {
+        indicator.classList.toggle('inactive', !isActive);
+        indicator.classList.toggle('active', isActive);
+        indicator.innerHTML = '<span class="pulse-dot"></span>';
+    }
+
+    if (hudEl) {
+        hudEl.innerText = '';
+        hudEl.style.color = '';
+    }
+}
+
 function onHandsDetected(results) {
     console.log("onHandsDetected called");
     const canvas = document.getElementById('localCanvas');
@@ -491,14 +514,7 @@ function onHandsDetected(results) {
         // only process for ML if user is signer
         if (userMode === 'signer') {
             noHandsStartTime = null;
-            const indicator = document.getElementById('localDetection');
-            const hudEl = document.getElementById('localLiveHUD');
-            indicator.classList.remove('inactive');
-            indicator.innerHTML = '<span class="pulse-dot"></span><span>Detecting ✓</span>';
-            if (hudEl) {
-                hudEl.innerText = 'Reading sign...';
-                hudEl.style.color = '#ffffff';
-            }
+            setDetectionIndicatorState(true);
 
             // build 136 feature array — left hand + right hand
             let leftFeatures  = new Array(68).fill(0);  // default zeros
@@ -529,17 +545,15 @@ function onHandsDetected(results) {
         }
 
     } else {
-        if (userMode === 'signer') {
-            const indicator = document.getElementById('localDetection');
-            const hudEl = document.getElementById('localLiveHUD');
-            indicator.classList.add('inactive');
-            indicator.innerHTML = '<span class="pulse-dot"></span><span>Detecting...</span>';
-            if (hudEl) {
-                hudEl.innerText = 'ML: No hands';
-                hudEl.style.color = '#bbbbbb';
-            }
-            resetServerBuffer();
-        }
+        setDetectionIndicatorState(false);
+
+        // Hands left the frame — clear the stability buffer so the same
+        // word can be accepted again the next time it's signed
+        // (HELLO -> hand leaves -> HELLO works correctly).
+        predictionHistory = [];
+        lastAcceptedPrediction = "";
+        currentStablePrediction = "";
+        updateCurrentStablePredictionUI();
     }
 }
 
@@ -551,7 +565,7 @@ function resetServerBuffer() {
     if (now - lastResetTime < 500) return; // avoid spamming the endpoint every frame
     lastResetTime = now;
 
-    fetch('http://127.0.0.1:5000/reset-buffer', {
+    fetch(getResetBufferUrl(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: roomId })
@@ -607,33 +621,38 @@ async function startHandDetection() {
     
     console.log('🎥 Starting hand detection...');
     
+    let processing = false;
+
     async function detectFrame() {
         if (!isMediaPipeReady) return;
-        
-        try {
-            console.log("Sending frame to MediaPipe");
-            await hands.send({ image: video });
-            console.log("Frame processed");
-        } catch (error) {
-            console.error("Error processing frame:", error);
+
+        if (processing) {
+            requestAnimationFrame(detectFrame);
+            return;
         }
-        
+
+        processing = true;
+
+        try {
+            await hands.send({ image: video });
+        } finally {
+            processing = false;
+        }
+
         requestAnimationFrame(detectFrame);
     }
-    
     detectFrame();}
 // ML MODEL INTEGRATION
 
 // 🔥 UPDATED API CONFIGURATION
 const API_CONFIG = {
     MOCK_API: 'https://jsonplaceholder.typicode.com/posts',
-    LOCAL_API: 'http://localhost:5000/predict',
-    
-    // 👇 REPLACE THIS WITH YOUR ACTUAL RENDER URL AFTER DEPLOYMENT
+    LOCAL_API: 'http://127.0.0.1:8000/predict',
+    LOCAL_GRAMMAR_API: 'http://127.0.0.1:8000/fix-grammar',
+    LOCAL_RESET_API: 'http://127.0.0.1:8000/reset-buffer',
     PRODUCTION_API: 'https://your-app-name.onrender.com/predict',
-    
-    // 👇 SET TO 'PRODUCTION' AFTER DEPLOYING TO RENDER
-    // Options: 'MOCK' (for testing without API), 'LOCAL' (localhost), 'PRODUCTION' (Render)
+    PRODUCTION_GRAMMAR_API: 'https://your-app-name.onrender.com/fix-grammar',
+    PRODUCTION_RESET_API: 'https://your-app-name.onrender.com/reset-buffer',
     ACTIVE: 'LOCAL'
 };
 
@@ -646,15 +665,32 @@ function getAPIUrl() {
     }
 }
 
+function getGrammarUrl() {
+    switch(API_CONFIG.ACTIVE) {
+        case 'MOCK': return API_CONFIG.MOCK_API;
+        case 'LOCAL': return API_CONFIG.LOCAL_GRAMMAR_API;
+        case 'PRODUCTION': return API_CONFIG.PRODUCTION_GRAMMAR_API;
+        default: return API_CONFIG.MOCK_API;
+    }
+}
+
+function getResetBufferUrl() {
+    switch(API_CONFIG.ACTIVE) {
+        case 'MOCK': return API_CONFIG.MOCK_API;
+        case 'LOCAL': return API_CONFIG.LOCAL_RESET_API;
+        case 'PRODUCTION': return API_CONFIG.PRODUCTION_RESET_API;
+        default: return API_CONFIG.MOCK_API;
+    }
+}
+
 // Log current configuration on page load
 console.log('🔗 API Configuration:');
-console.log('  Endpoint:', API_CONFIG.PREDICT);
+console.log('  Endpoint:', getAPIUrl());
 
 let lastPredictionTime = 0;
 const PREDICTION_INTERVAL = 100; // 1 prediction per second
 let apiCallCount = 0;
 let predictionHistory = [];
-const HISTORY_SIZE = 3;
 let successfulCalls = 0;
 let failedCalls = 0;
 
@@ -672,8 +708,8 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
     console.log(`📤 Sending to ML model (Call #${apiCallCount}) | Total values: ${combinedLandmarks.length}`);
     const hudEl = document.getElementById('localLiveHUD');
     if (hudEl) {
-        hudEl.innerText = 'ML: sending...';
-        hudEl.style.color = '#ffffff';
+        hudEl.innerText = '';
+        hudEl.style.color = '';
     }
     
     try {
@@ -684,7 +720,7 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
             timestamp: now
         };
         
-        const response = await fetch(API_CONFIG.PREDICT, {
+        const response = await fetch(getAPIUrl(), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -712,15 +748,8 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
         successfulCalls++;
         
         sendPredictionToRemote(prediction);
-        displayLocalSubtitles(prediction);
-
-        if (hudEl && prediction.sign) {
-            const pct = (prediction.confidence * 100).toFixed(0);
-            hudEl.innerText = `ML: ${prediction.sign} (${pct}%)`;
-            hudEl.style.color = prediction.confidence > 0.75 ? '#4CAF50' : '#fff';
-        }
-
         handleIncomingPrediction(prediction);
+        displayLocalSubtitles(prediction);
         updateAPIStats();
         console.log("📊 CURRENT FRAME FLAT ARRAY:", JSON.stringify(combinedLandmarks));
     
@@ -755,67 +784,89 @@ function sendPredictionToRemote(prediction) {
 // Display remote user's signs as subtitles
 function displayRemoteSubtitles(prediction) {
     const subtitleText = document.getElementById('remoteSubtitleText');
-    
-    const confidencePercent = (prediction.confidence * 100).toFixed(0);
-    const confidenceColor = prediction.confidence > 0.75 ? '#4CAF50' : 
-                           prediction.confidence > 0.6 ? '#FFA500' : '#FF5252';
-    
+    if (!subtitleText) return;
+
     const mockBadge = prediction.isMock ? ' <span style="color: #FFA500; font-size: 14px;">[TEST]</span>' : '';
-    
-    subtitleText.innerHTML = `
-        ${prediction.sign}${mockBadge}
-        <div class="subtitle-confidence" style="color: ${confidenceColor};">
-            Confidence: ${confidencePercent}%
-        </div>
-    `;
+    subtitleText.innerHTML = `${prediction.sign || 'Waiting for sign'}${mockBadge}`;
+}
+
+// --- Stability-based acceptance logic ---
+// We commit a word the moment MAJORITY_REQUIRED of the last HISTORY_SIZE
+// predictions agree — no "wait for the next word" step, so there's nothing
+// to flush when a sentence ends or a pause happens.
+function updateCurrentStablePredictionUI() {
+    const localSubtitles = document.getElementById('localSubtitles');
+    const localSubtitleText = document.getElementById('localSubtitleText');
+
+    if (!localSubtitles || !localSubtitleText) return;
+
+    localSubtitles.style.display = 'block';
+    localSubtitleText.textContent = currentStablePrediction || 'Waiting for sign';
 }
 
 function handleIncomingPrediction(prediction) {
-    // Save the current highest-confidence word to an intermediate memory variable
-    const now = Date.now();
-    console.log({
-    sign: prediction.sign,
-    buffering: prediction.buffering,
-    confidence: prediction.confidence,
-    cooldownElapsed: now - lastAcceptedTime,
-    threshold: WORD_COOLDOWN
+    const normalizedSign = prediction?.sign?.trim();
+
+    if (!normalizedSign || normalizedSign.toLowerCase() === 'none' || prediction?.buffering) {
+        return;
+    }
+
+    if (prediction.confidence <= 0.65) {
+        return;
+    }
+
+    // Add newest prediction, keep only the last HISTORY_SIZE frames
+    predictionHistory.push(normalizedSign);
+    if (predictionHistory.length > HISTORY_SIZE) {
+        predictionHistory.shift();
+    }
+
+    // Wait until we have a full window before deciding anything
+    if (predictionHistory.length < HISTORY_SIZE) {
+        return;
+    }
+
+    // Majority vote: which sign appears most often in the window, and how often?
+    const counts = {};
+    predictionHistory.forEach(sign => {
+        counts[sign] = (counts[sign] || 0) + 1;
     });
-    if (prediction.sign && prediction.sign.toLowerCase() !== 'none' &&
-    !prediction.buffering && prediction.confidence > 0.65 &&
-        now - lastAcceptedTime > WORD_COOLDOWN) {
-        lastAcceptedTime = now;
-        predictionHistory.push(prediction.sign);
 
-        if (predictionHistory.length > HISTORY_SIZE) {
-            predictionHistory.shift();
+    let majoritySign = predictionHistory[0];
+    let majorityCount = 0;
+    for (const sign in counts) {
+        if (counts[sign] > majorityCount) {
+            majorityCount = counts[sign];
+            majoritySign = sign;
         }
+    }
 
-        // Count occurrences
-        const counts = {};
+    // No clear majority yet (e.g. split 2/2/1 across 5 frames) — don't
+    // touch the display or commit anything until the window agrees enough.
+    if (majorityCount < MAJORITY_REQUIRED) {
+        return;
+    }
 
-        predictionHistory.forEach(word => {
-            counts[word] = (counts[word] || 0) + 1;
+    currentStablePrediction = majoritySign;
+    currentBestConfidence = prediction.confidence;
+    currentBestPrediction = majoritySign;
+    updateCurrentStablePredictionUI();
+
+    // Don't commit duplicate consecutive words
+    if (majoritySign === lastAcceptedPrediction) {
+        return;
+    }
+
+    lastAcceptedPrediction = majoritySign;
+    pushToStack(majoritySign);
+
+    if (socket && roomId) {
+        const currentDraftString = wordStack.join(' ');
+        socket.emit('sign-prediction', {
+            roomId: roomId,
+            prediction: prediction,
+            draftSentence: currentDraftString
         });
-
-        // Find majority prediction
-        const stablePrediction = Object.keys(counts).reduce((a, b) =>
-            counts[a] > counts[b] ? a : b
-        );
-
-        if (prediction.confidence > currentBestConfidence) {
-            currentBestConfidence = prediction.confidence;
-            currentBestPrediction = stablePrediction;
-        }
-        if (socket && roomId) {
-            // Combine your array of words into a single readable string (e.g., "Hello Name")
-            const currentDraftString = wordStack.join(" ");
-            
-            socket.emit('sign-prediction', {
-                roomId: roomId,
-                prediction: prediction,
-                draftSentence: currentDraftString // Sends the full running stack over!
-            });
-        }
     }
 }
 
@@ -837,6 +888,18 @@ function clearWordBufferUI() {
     updateStackUI();
 }
 
+function resetSentenceBuilding() {
+    clearWordBufferUI();
+    predictionHistory = [];
+    lastAcceptedPrediction = '';
+    currentBestPrediction = '';
+    currentBestConfidence = 0;
+    currentStablePrediction = '';
+    updateCurrentStablePredictionUI();
+    updateStatus('Sentence building restarted');
+    resetServerBuffer();
+}
+
 function pushToStack(word) {
     const cleanWord = word.trim();
 
@@ -851,13 +914,29 @@ function pushToStack(word) {
 }
 
 window.addEventListener('keydown', async (event) => {
+    if (event.key === '0') {
+        event.preventDefault();
+        resetSentenceBuilding();
+        return;
+    }
+
+    if (event.key === 'Backspace') {
+        event.preventDefault();
+        if (wordStack.length === 0) return;
+        wordStack.pop();
+        updateWordBufferUI();
+        updateStackUI();
+        updateStatus('Removed last word');
+        return;
+    }
+
     if (event.key === '.') {
         if (wordStack.length === 0) return;
 
         console.log("🧠 Sending stack to Groq:", wordStack);
         
         try {
-            const response = await fetch(API_CONFIG.GRAMMAR, {
+            const response = await fetch(getGrammarUrl(), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -870,7 +949,6 @@ window.addEventListener('keydown', async (event) => {
             if (data.sentence) {
                 console.log("✨ Translation Result:", data.sentence);
 
-                // Push the clean translation to your side transcript log box too!
                 addToTranscript(data.sentence);
 
                 if (socket && roomId) {
@@ -880,11 +958,13 @@ window.addEventListener('keydown', async (event) => {
                     });
                 }
 
-                // Clear out working memory so you can build your next sentence from scratch
                 clearWordBufferUI();
                 predictionHistory = [];
-                currentBestPrediction = "";
+                lastAcceptedPrediction = '';
+                currentBestPrediction = '';
                 currentBestConfidence = 0;
+                currentStablePrediction = '';
+                updateCurrentStablePredictionUI();
                 resetServerBuffer();
             }
         } catch (err) {
@@ -903,24 +983,15 @@ function updateStackUI() {
 // Display YOUR OWN signs as subtitles on your local screen
 function displayLocalSubtitles(prediction) {
     const localSubtitles = document.getElementById('localSubtitles');
-    
-    // Make sure subtitles are visible
+    if (!localSubtitles) return;
+
     localSubtitles.style.display = 'block';
-    
+
     const localSubtitleText = document.getElementById('localSubtitleText');
-    
-    const confidencePercent = (prediction.confidence * 100).toFixed(0);
-    const confidenceColor = prediction.confidence > 0.75 ? '#4CAF50' : 
-                           prediction.confidence > 0.6 ? '#FFA500' : '#FF5252';
-    
-    const mockBadge = prediction.isMock ? ' <span style="color: #FFA500; font-size: 14px;">[TEST]</span>' : '';
-    
-    localSubtitleText.innerHTML = `
-        ${prediction.sign}${mockBadge}
-        <div class="subtitle-confidence" style="color: ${confidenceColor};">
-            Confidence: ${confidencePercent}%
-        </div>
-    `;
+    if (!localSubtitleText) return;
+
+    const sign = currentStablePrediction || prediction?.sign || 'Waiting for sign';
+    localSubtitleText.textContent = sign;
 }
 
 /**
@@ -1069,12 +1140,12 @@ function clearTranscript() {
 
 window.testMLAPI = async function() {
     console.log('🧪 Testing ML API...');
-    console.log('Endpoint:', API_CONFIG.PREDICT);
+    console.log('Endpoint:', getAPIUrl());
     
     const testLandmarks = Array(136).fill(0).map(() => Math.random());
     
     try {
-        const response = await fetch(API_CONFIG.PREDICT, {
+        const response = await fetch(getAPIUrl(), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

@@ -78,10 +78,10 @@ try:
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
     classes = checkpoint['classes']
-    print(f"✅ LSTM model loaded successfully!")
+    print(f"LSTM model loaded successfully!")
     print(f"Classes ({len(classes)}): {classes}")
 except Exception as e:
-    print(f"❌ Error loading model: {e}")
+    print(f" Error loading model: {e}")
     model = None
     classes = []
 
@@ -93,7 +93,7 @@ session_buffers: dict[str, deque] = {}
 import time
 
 session_last_seen: dict[str, float] = {}
-GESTURE_TIMEOUT = 1.0  # seconds
+GESTURE_TIMEOUT = 1  # seconds
 def get_buffer(session_id: str) -> deque:
     if session_id not in session_buffers:
         session_buffers[session_id] = deque(maxlen=SEQUENCE_LENGTH)
