@@ -90,7 +90,10 @@ except Exception as e:
 # so two people signing simultaneously don't pollute each other's
 # sequences. Buffers are created lazily on first use.
 session_buffers: dict[str, deque] = {}
+import time
 
+session_last_seen: dict[str, float] = {}
+GESTURE_TIMEOUT = 1.0  # seconds
 def get_buffer(session_id: str) -> deque:
     if session_id not in session_buffers:
         session_buffers[session_id] = deque(maxlen=SEQUENCE_LENGTH)
@@ -120,6 +123,17 @@ def predict(data: LandmarkRequest):
         return {"error": f"Data length {len(landmarks)} is invalid. Need {FEATURES_PER_FRAME}."}
 
     buffer = get_buffer(data.session_id)
+
+    now = time.time()
+    last_seen = session_last_seen.get(data.session_id)
+
+    # If this session has been idle too long,
+    # start a fresh gesture.
+    if last_seen is not None and (now - last_seen) > GESTURE_TIMEOUT:
+        print(f"[{data.session_id}] Gesture timeout. Clearing buffer.")
+        buffer.clear()
+
+    session_last_seen[data.session_id] = now
     buffer.append(landmarks)
 
     print(data.session_id)
@@ -166,8 +180,11 @@ def predict(data: LandmarkRequest):
 def reset_buffer(data: ResetRequest):
     """Call this when no hands are detected, to avoid splicing
     unrelated gesture fragments into one sequence."""
-    print("BUFFER CLEARED")
     if data.session_id in session_buffers:
+        print(
+            f"[{data.session_id}] BUFFER CLEARED "
+            f"(previous size={len(session_buffers[data.session_id])})"
+        )
         session_buffers[data.session_id].clear()
     return {"status": "buffer cleared", "session_id": data.session_id}
 

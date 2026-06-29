@@ -1,6 +1,5 @@
-// ============================================================
+
 // USER MODE SETUP FROM SESSION STORAGE
-// ============================================================
 
 // Global variables
 let userMode = 'speaker';
@@ -433,12 +432,8 @@ function setupSocketHandlers() {
                 <span style="color: #fff; font-size: 24px; text-shadow: 2px 2px 4px #000;">${finalSentence}</span>
             `;
         }
-    });
-}
-
-// ============================================================
+    });}
 // MEDIAPIPE HANDS DETECTION
-// ============================================================
 
 let hands;
 let isMediaPipeReady = false;
@@ -470,6 +465,7 @@ function initializeMediaPipe() {
 }
 
 function onHandsDetected(results) {
+    console.log("onHandsDetected called");
     const canvas = document.getElementById('localCanvas');
     const ctx = canvas.getContext('2d');
     
@@ -494,6 +490,7 @@ function onHandsDetected(results) {
 
         // only process for ML if user is signer
         if (userMode === 'signer') {
+            noHandsStartTime = null;
             const indicator = document.getElementById('localDetection');
             const hudEl = document.getElementById('localLiveHUD');
             indicator.classList.remove('inactive');
@@ -506,8 +503,9 @@ function onHandsDetected(results) {
             // build 136 feature array — left hand + right hand
             let leftFeatures  = new Array(68).fill(0);  // default zeros
             let rightFeatures = new Array(68).fill(0);  // default zeros
+            const detectedHandedness = [];
 
-                        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
                 const landmarks  = results.multiHandLandmarks[i];
                 const rawHandedness = results.multiHandedness[i].label;
                 // MediaPipe JS reads the unflipped camera feed, but training data
@@ -515,6 +513,7 @@ function onHandsDetected(results) {
                 // processing — so handedness labels are mirror-opposite. Swap here
                 // to match what the model was trained on.
                 const handedness = rawHandedness === 'Left' ? 'Right' : 'Left';
+                detectedHandedness.push(handedness);
                 const features   = extractRobustFeatures(landmarks);
                 if (handedness === 'Left') {
                     leftFeatures = features;
@@ -526,11 +525,10 @@ function onHandsDetected(results) {
             const allFeatures = [...leftFeatures, ...rightFeatures];
 
             // send to ML model
-            sendToMLModel(allFeatures, ['Both']);
+            sendToMLModel(allFeatures, detectedHandedness.length > 0 ? detectedHandedness : ['Both']);
         }
 
     } else {
-        missingHandFrames++;
         if (userMode === 'signer') {
             const indicator = document.getElementById('localDetection');
             const hudEl = document.getElementById('localLiveHUD');
@@ -540,22 +538,7 @@ function onHandsDetected(results) {
                 hudEl.innerText = 'ML: No hands';
                 hudEl.style.color = '#bbbbbb';
             }
-
-            // Only act after 10 consecutive missing frames
-            if (missingHandFrames >= RESET_AFTER_FRAMES) {
-                // Push best word to stack before wiping state
-                if (currentBestPrediction !== "") {
-                    pushToStack(currentBestPrediction);
-                }
-                // Reset ALL local state
-                predictionHistory = [];
-                currentBestPrediction = "";
-                currentBestConfidence = 0;
-                missingHandFrames = 0;
-
-                // Only reset backend buffer AFTER local state is cleared
-                resetServerBuffer();
-            }
+            resetServerBuffer();
         }
     }
 }
@@ -568,7 +551,7 @@ function resetServerBuffer() {
     if (now - lastResetTime < 500) return; // avoid spamming the endpoint every frame
     lastResetTime = now;
 
-    fetch(API_CONFIG.RESET, {
+    fetch('http://127.0.0.1:5000/reset-buffer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: roomId })
@@ -628,33 +611,40 @@ async function startHandDetection() {
         if (!isMediaPipeReady) return;
         
         try {
+            console.log("Sending frame to MediaPipe");
             await hands.send({ image: video });
+            console.log("Frame processed");
         } catch (error) {
-            console.error('Error processing frame:', error);
+            console.error("Error processing frame:", error);
         }
         
         requestAnimationFrame(detectFrame);
     }
     
-    detectFrame();
-}
-
-// ============================================================
+    detectFrame();}
 // ML MODEL INTEGRATION
-// ============================================================
 
 // 🔥 UPDATED API CONFIGURATION
-const API_BASE =
-    window.location.hostname === "localhost"
-        ? "http://localhost:8000"
-        : "https://universal-link-backend.kindbay-309802f0.southeastasia.azurecontainerapps.io";
-
 const API_CONFIG = {
-    PREDICT: `${API_BASE}/predict`,
-    RESET: `${API_BASE}/reset-buffer`,
-    GRAMMAR: `${API_BASE}/fix-grammar`
+    MOCK_API: 'https://jsonplaceholder.typicode.com/posts',
+    LOCAL_API: 'http://localhost:5000/predict',
+    
+    // 👇 REPLACE THIS WITH YOUR ACTUAL RENDER URL AFTER DEPLOYMENT
+    PRODUCTION_API: 'https://your-app-name.onrender.com/predict',
+    
+    // 👇 SET TO 'PRODUCTION' AFTER DEPLOYING TO RENDER
+    // Options: 'MOCK' (for testing without API), 'LOCAL' (localhost), 'PRODUCTION' (Render)
+    ACTIVE: 'LOCAL'
 };
 
+function getAPIUrl() {
+    switch(API_CONFIG.ACTIVE) {
+        case 'MOCK': return API_CONFIG.MOCK_API;
+        case 'LOCAL': return API_CONFIG.LOCAL_API;
+        case 'PRODUCTION': return API_CONFIG.PRODUCTION_API;
+        default: return API_CONFIG.MOCK_API;
+    }
+}
 
 // Log current configuration on page load
 console.log('🔗 API Configuration:');
@@ -680,7 +670,6 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
     apiCallCount++;
     
     console.log(`📤 Sending to ML model (Call #${apiCallCount}) | Total values: ${combinedLandmarks.length}`);
-    
     const hudEl = document.getElementById('localLiveHUD');
     if (hudEl) {
         hudEl.innerText = 'ML: sending...';
@@ -688,10 +677,10 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
     }
     
     try {
-        const requestPayload = {
-            landmarks: combinedLandmarks,
-            handedness: handednessArray,
-            session_id: roomId,
+                const requestPayload = {
+            landmarks: combinedLandmarks, // Will natively be 68 or 136 elements
+            handedness: handednessArray,  // Array structure: e.g., ["Left"] or ["Right", "Left"]
+            session_id: roomId,           // isolates this user's sliding window buffer on the backend
             timestamp: now
         };
         
@@ -716,6 +705,7 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
 
         console.log("Backend response:", predictionData);
         
+        // Pass array along for resolution matching parsing engine requirements
         const prediction = parseFriendResponse(predictionData, handednessArray);
         
         console.log('✅ Prediction received:', prediction);
@@ -732,6 +722,9 @@ async function sendToMLModel(combinedLandmarks, handednessArray) {
 
         handleIncomingPrediction(prediction);
         updateAPIStats();
+        console.log("📊 CURRENT FRAME FLAT ARRAY:", JSON.stringify(combinedLandmarks));
+    
+        console.log(`Handedness arrangement for this frame:`, handednessArray);
         
     } catch (error) {
         if (hudEl) {
