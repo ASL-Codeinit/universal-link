@@ -284,7 +284,7 @@
 
     <!-- Brand -->
     <div class="brand">
-        <div class="logo-dot"></div>
+        <div class="logo-small" aria-label="SignLink logo"></div>
         <div>
             <h1>SignLink</h1>
             <p>Pre-call setup</p>
@@ -335,27 +335,33 @@
 </div>
 
 <script>
-// ─── 1. Read session state ────────────────────────────────────────────────────
-const userName   = sessionStorage.getItem('userName')   || 'Guest';
-const userMode   = sessionStorage.getItem('userMode')   || 'speaker';
-const roomId     = new URLSearchParams(window.location.search).get('room');
-
-// If someone lands here with no room, bounce back
+// ─── 1. Session state ─────────────────────────────────────────────────────────
+const userName = sessionStorage.getItem('userName') || 'Guest';
+const userMode = sessionStorage.getItem('userMode') || 'speaker';
+const roomId   = new URLSearchParams(window.location.search).get('room');
 if (!roomId) { window.location.href = '/'; }
 
-// ─── 2. Populate identity strip ──────────────────────────────────────────────
-document.getElementById('identityName').textContent = userName;
+// ─── 2. Backend — hostname decides, no probing ────────────────────────────────
+const IS_LOCAL = window.location.hostname === 'localhost'
+              || window.location.hostname === '127.0.0.1';
+const ACTIVE_BASE = IS_LOCAL
+    ? 'http://127.0.0.1:8000'
+    : 'https://universal-link-backend.kindbay-309802f0.southeastasia.azurecontainerapps.io';
+const HEALTH_URL = `${ACTIVE_BASE}/health`;
+console.log('🔗 Backend:', ACTIVE_BASE);
 
+// ─── 3. Identity strip ────────────────────────────────────────────────────────
+document.getElementById('identityName').textContent = userName;
 const badge = document.getElementById('roleBadge');
 if (userMode === 'signer') {
-    badge.textContent  = '🤟 Signer';
-    badge.className    = 'role-badge signer';
+    badge.textContent = '🤟 Signer';
+    badge.className   = 'role-badge signer';
 } else {
-    badge.textContent  = '🗣️ Listener';
-    badge.className    = 'role-badge listener';
+    badge.textContent = '🗣️ Listener';
+    badge.className   = 'role-badge listener';
 }
 
-// ─── 3. Camera access ────────────────────────────────────────────────────────
+// ─── 4. Camera access ─────────────────────────────────────────────────────────
 const video  = document.getElementById('previewVideo');
 const camMsg = document.getElementById('camMsg');
 
@@ -363,7 +369,6 @@ async function startCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         video.srcObject = stream;
-        // Store that camera is already acquired so call.html can reuse permissions
         sessionStorage.setItem('cameraGranted', 'true');
         camMsg.classList.add('hidden');
     } catch (err) {
@@ -371,61 +376,53 @@ async function startCamera() {
         document.getElementById('camError').classList.add('visible');
     }
 }
-
 startCamera();
 
-// ─── 4. Backend health polling ───────────────────────────────────────────────
-// The health endpoint lives at the same base URL as the predict endpoint.
-// If you switch API_CONFIG.ACTIVE to PRODUCTION in script.js, change this too.
-const HEALTH_URL = 'http://127.0.0.1:8000/health';   // ← update to Azure URL when deploying
-
-const MAX_WAIT_MS  = 90_000;   // give up showing "checking" after 90 s
-const POLL_MS      = 3_000;    // poll every 3 s
+// ─── 5. Backend health polling ────────────────────────────────────────────────
+const MAX_WAIT_MS = 90_000;
+const POLL_MS     = 3_000;
 
 let pollStart   = Date.now();
 let pollTimer   = null;
 let backendLive = false;
 
-const statusIcon  = document.getElementById('statusIcon');
-const statusTitle = document.getElementById('statusTitle');
-const statusSub   = document.getElementById('statusSub');
-const statusDot   = document.getElementById('statusDot');
+const statusIcon   = document.getElementById('statusIcon');
+const statusTitle  = document.getElementById('statusTitle');
+const statusSub    = document.getElementById('statusSub');
+const statusDot    = document.getElementById('statusDot');
 const progressWrap = document.getElementById('progressWrap');
 const progressBar  = document.getElementById('progressBar');
 const joinBtn      = document.getElementById('joinBtn');
 
 function setChecking() {
-    statusIcon.className  = 'status-icon checking';
-    statusIcon.textContent = '⏳';
-    statusDot.className   = 'status-dot checking';
-    statusTitle.textContent = 'Waking up ML backend…';
-    statusSub.textContent   = 'Azure cold start may take ~30 s';
+    statusIcon.className    = 'status-icon checking';
+    statusIcon.textContent  = '⏳';
+    statusDot.className     = 'status-dot checking';
+    statusTitle.textContent = IS_LOCAL ? 'Connecting to local backend…' : 'Waking up ML backend…';
+    statusSub.textContent   = IS_LOCAL ? 'Make sure uvicorn is running' : 'Azure cold start may take ~30 s';
     progressWrap.classList.add('visible');
 }
 
 function setLive() {
     backendLive = true;
-    statusIcon.className  = 'status-icon live';
-    statusIcon.textContent = '✅';
-    statusDot.className   = 'status-dot live';
+    statusIcon.className    = 'status-icon live';
+    statusIcon.textContent  = '✅';
+    statusDot.className     = 'status-dot live';
     statusTitle.textContent = 'ML backend is live';
-    statusSub.textContent   = 'Ready to predict signs';
+    statusSub.textContent   = IS_LOCAL ? 'Local server ready' : 'Azure backend ready';
     progressWrap.classList.remove('visible');
-
     joinBtn.disabled    = false;
     joinBtn.textContent = 'Join Call →';
     if (pollTimer) clearInterval(pollTimer);
 }
 
 function setError() {
-    statusIcon.className  = 'status-icon error';
-    statusIcon.textContent = '⚠️';
-    statusDot.className   = 'status-dot error';
+    statusIcon.className    = 'status-icon error';
+    statusIcon.textContent  = '⚠️';
+    statusDot.className     = 'status-dot error';
     statusTitle.textContent = 'Backend unreachable';
     statusSub.textContent   = 'You can still join — predictions may not work';
     progressWrap.classList.remove('visible');
-
-    // Allow join anyway after timeout
     joinBtn.disabled    = false;
     joinBtn.textContent = 'Join Anyway →';
     if (pollTimer) clearInterval(pollTimer);
@@ -433,12 +430,9 @@ function setError() {
 
 async function pollHealth() {
     const elapsed = Date.now() - pollStart;
-    // Update progress bar
-    const pct = Math.min((elapsed / MAX_WAIT_MS) * 100, 98);
-    progressBar.style.width = pct + '%';
-
+    progressBar.style.width = Math.min((elapsed / MAX_WAIT_MS) * 100, 98) + '%';
     try {
-        const resp = await fetch(HEALTH_URL, { method: 'GET', signal: AbortSignal.timeout(5000) });
+        const resp = await fetch(HEALTH_URL, { signal: AbortSignal.timeout(5000) });
         if (resp.ok) {
             const data = await resp.json();
             if (data.model_loaded || data.status === 'healthy') {
@@ -448,19 +442,15 @@ async function pollHealth() {
             }
         }
     } catch (_) { /* still waiting */ }
-
-    if (elapsed >= MAX_WAIT_MS) {
-        setError();
-    }
+    if (elapsed >= MAX_WAIT_MS) setError();
 }
 
 setChecking();
-pollHealth();                              // immediate first check
+pollHealth();
 pollTimer = setInterval(pollHealth, POLL_MS);
 
-// ─── 5. Join ─────────────────────────────────────────────────────────────────
+// ─── 6. Join ──────────────────────────────────────────────────────────────────
 function joinCall() {
-    // Stop preview stream so call.html can acquire the camera fresh
     if (video.srcObject) {
         video.srcObject.getTracks().forEach(t => t.stop());
         video.srcObject = null;
