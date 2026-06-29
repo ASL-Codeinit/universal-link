@@ -19,7 +19,23 @@
                 </div>
             </div>
         </div>
-        <button class="copy-btn-small" onclick="copyRoomLink()">📋 Copy Link</button>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <button class="copy-btn-small" onclick="copyInviteLink()">📋 Invite Link</button>
+            <button class="guide-btn" id="guideBtn" onclick="toggleGuide()" aria-label="Hotkey guide">?</button>
+        </div>
+
+        <!-- Guide popover -->
+        <div class="guide-popover" id="guidePopover">
+            <div class="guide-title">Hotkeys &amp; Notes</div>
+            <ul class="guide-list">
+                <li><kbd>Backspace</kbd> Delete last signed word</li>
+                <li><kbd>0</kbd> Reset sentence (start over)</li>
+                <li><kbd>.</kbd> End sentence &amp; send to transcript</li>
+            </ul>
+            <div class="guide-note">
+                ⏳ <strong>Buffer warm-up:</strong> The first ~20 frames after you start signing are buffered before predictions begin. There will be a short delay at the very start — this is normal.
+            </div>
+        </div>
     </div>
 
 <div class="main-container">
@@ -110,10 +126,139 @@
     <script src="/socket.io/socket.io.js"></script>
     <script src="/js/script.js"></script>
     
+    <style>
+        /* ── Guide button ── */
+        .guide-btn {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.18);
+            background: rgba(255,255,255,0.08);
+            color: #cbd5e1;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+            transition: background .15s;
+            position: relative;
+            z-index: 200;
+        }
+        .guide-btn:hover { background: rgba(255,255,255,0.16); }
+
+        /* ── Guide popover ── */
+        .guide-popover {
+            position: absolute;
+            top: calc(100% + 10px);
+            right: 0;
+            width: 270px;
+            background: #1a2236;
+            border: 1px solid #1e2d45;
+            border-radius: 12px;
+            padding: 16px;
+            z-index: 999;
+            display: none;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+            font-family: 'Poppins', sans-serif;
+        }
+        .guide-popover.open { display: block; }
+
+        .guide-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: .7px;
+            margin-bottom: 10px;
+        }
+        .guide-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .guide-list li {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: #e2e8f0;
+        }
+        kbd {
+            display: inline-block;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 5px;
+            padding: 2px 7px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #7dd3fc;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .guide-note {
+            font-size: 12px;
+            color: #94a3b8;
+            background: rgba(245,158,11,0.08);
+            border: 1px solid rgba(245,158,11,0.2);
+            border-radius: 8px;
+            padding: 10px 12px;
+            line-height: 1.5;
+        }
+        .guide-note strong { color: #fbbf24; }
+
+        /* Make header-left position:relative for popover anchor */
+        .header { position: relative; }
+    </style>
+
     <script>
         // Get user info from sessionStorage
         const userName = sessionStorage.getItem('userName') || 'Guest';
+        const _userMode = sessionStorage.getItem('userMode') || 'speaker';
         document.getElementById('userNameDisplay').textContent = userName;
+
+        // ── Guide toggle ──────────────────────────────────────────────────────
+        function toggleGuide() {
+            const pop = document.getElementById('guidePopover');
+            pop.classList.toggle('open');
+        }
+        // Close popover when clicking elsewhere
+        document.addEventListener('click', (e) => {
+            const pop = document.getElementById('guidePopover');
+            const btn = document.getElementById('guideBtn');
+            if (pop && btn && !pop.contains(e.target) && !btn.contains(e.target)) {
+                pop.classList.remove('open');
+            }
+        });
+
+        // ── Copy invite link (sends opposite mode) ───────────────────────────
+        function copyInviteLink() {
+            const roomParam = new URLSearchParams(window.location.search).get('room');
+            if (!roomParam) return;
+
+            // Flip the mode so the invitee gets the complementary role
+            const myMode     = _userMode;                               // 'signer' | 'speaker'
+            const inviteMode = myMode === 'signer' ? 'speaker' : 'signer';
+
+            // Build a setup-page URL that pre-fills the invitee's role.
+            // The invitee will still enter their own name on the lobby,
+            // but we pass the role so setup.html can reflect it.
+            // We embed it as a query param; lobby reads it and stores to sessionStorage.
+            const baseOrigin = window.location.origin;
+            const inviteUrl  = `${baseOrigin}/setup?room=${roomParam}&role=${inviteMode}`;
+
+            navigator.clipboard.writeText(inviteUrl).then(() => {
+                const btn = document.querySelector('.copy-btn-small');
+                if (btn) {
+                    const orig = btn.textContent;
+                    btn.textContent = '✅ Copied!';
+                    setTimeout(() => btn.textContent = orig, 2000);
+                }
+            }).catch(() => {
+                // Fallback for browsers that block clipboard without interaction
+                prompt('Copy this invite link:', inviteUrl);
+            });
+        }
     </script>
 </body>
 </html>

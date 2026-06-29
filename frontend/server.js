@@ -26,6 +26,10 @@ app.get('/video', (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'call.html'));
 });
 
+app.get('/setup', (req, res) => {
+    res.sendFile(path.join(__dirname, 'pages', 'setup.html'));
+});
+
 io.on('connection', (socket) => {
     console.log(`✅ User connected: ${socket.id}`);
 
