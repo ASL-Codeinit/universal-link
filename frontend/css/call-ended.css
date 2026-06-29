@@ -1,0 +1,279 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Poppins', sans-serif;
+    background: #121619;
+    color: #e4e7ea;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+
+.header {
+    background: rgba(24, 28, 31, 0.96);
+    padding: 20px 30px;
+    border-bottom: 1px solid rgba(119, 149, 121, 0.12);
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.logo-small {
+    width: 42px;
+    height: 42px;
+    background-image: url('/css/sign-language.png');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    border-radius: 8px;
+    border: 1px solid rgba(138, 163, 136, 0.18);
+    background-color: rgba(224, 236, 218, 0.85);
+    flex-shrink: 0;
+}
+
+.header-brand {
+    font-size: 20px;
+    font-weight: 700;
+    color: #bfd8b3;
+    letter-spacing: 0.3px;
+}
+
+/* ── Page layout ─────────────────────────────────────────── */
+
+.page-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 60px 24px 48px;
+    gap: 28px;
+}
+
+/* ── Status card ─────────────────────────────────────────── */
+
+.status-card {
+    background: rgba(24, 29, 33, 0.9);
+    border: 1px solid rgba(119, 149, 121, 0.14);
+    border-radius: 20px;
+    padding: 44px 52px;
+    text-align: center;
+    max-width: 460px;
+    width: 100%;
+}
+
+.ended-icon-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 24px;
+    border-radius: 50%;
+    background: rgba(142, 84, 80, 0.12);
+    border: 1px solid rgba(142, 84, 80, 0.22);
+}
+
+.ended-icon-wrap svg {
+    color: #c47a76;
+}
+
+.status-card h1 {
+    font-size: 26px;
+    font-weight: 700;
+    color: #bfd8b3;
+    margin-bottom: 8px;
+}
+
+.status-card .subtitle {
+    font-size: 14px;
+    color: #7a9477;
+    margin-bottom: 32px;
+    font-weight: 400;
+}
+
+/* ── Duration badge ──────────────────────────────────────── */
+
+.duration-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(123, 191, 150, 0.08);
+    border: 1px solid rgba(123, 191, 150, 0.2);
+    border-radius: 50px;
+    padding: 10px 22px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #8ebc8f;
+    letter-spacing: 0.5px;
+    margin-bottom: 32px;
+}
+
+.duration-badge svg {
+    opacity: 0.75;
+    flex-shrink: 0;
+}
+
+/* ── Home button ─────────────────────────────────────────── */
+
+.home-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    background: rgba(123, 191, 150, 0.11);
+    border: 1px solid rgba(123, 191, 150, 0.26);
+    border-radius: 10px;
+    color: #c8e6c9;
+    font-family: 'Poppins', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 12px 28px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.home-btn:hover {
+    background: rgba(123, 191, 150, 0.2);
+    border-color: rgba(123, 191, 150, 0.42);
+    transform: translateY(-1px);
+}
+
+.home-btn svg {
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+/* ── Transcript card ─────────────────────────────────────── */
+
+.transcript-card {
+    background: rgba(19, 24, 28, 0.92);
+    border: 1px solid rgba(94, 135, 102, 0.16);
+    border-radius: 20px;
+    width: 100%;
+    max-width: 680px;
+    overflow: hidden;
+}
+
+.transcript-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    background: rgba(27, 33, 37, 0.9);
+    border-bottom: 1px solid rgba(72, 98, 78, 0.15);
+}
+
+.transcript-header h3 {
+    font-size: 12px;
+    font-weight: 700;
+    color: #4CAF50;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}
+
+.transcript-count {
+    font-size: 12px;
+    color: #6a876a;
+    font-weight: 500;
+}
+
+.transcript-body {
+    padding: 20px 24px;
+    max-height: 380px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.transcript-body::-webkit-scrollbar {
+    width: 5px;
+}
+
+.transcript-body::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.transcript-body::-webkit-scrollbar-thumb {
+    background: rgba(123, 191, 150, 0.22);
+    border-radius: 3px;
+}
+
+.transcript-entry {
+    background: rgba(24, 29, 33, 0.9);
+    border-left: 3px solid rgba(123, 191, 150, 0.55);
+    border-radius: 10px;
+    padding: 12px 16px;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.entry-text {
+    color: #b8d6b7;
+    font-weight: 600;
+    font-size: 15px;
+    line-height: 1.4;
+}
+
+.entry-time {
+    color: #8b9b94;
+    font-size: 11px;
+    margin-top: 4px;
+}
+
+.transcript-empty {
+    text-align: center;
+    color: #4a5e4a;
+    font-size: 14px;
+    padding: 36px 20px;
+}
+
+/* ── Responsive ──────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+    .header {
+        padding: 14px 18px;
+    }
+
+    .logo-small {
+        width: 34px;
+        height: 34px;
+    }
+
+    .header-brand {
+        font-size: 17px;
+    }
+
+    .page-content {
+        padding: 36px 16px 36px;
+    }
+
+    .status-card {
+        padding: 30px 24px;
+    }
+
+    .status-card h1 {
+        font-size: 22px;
+    }
+
+    .transcript-body {
+        max-height: 260px;
+    }
+}

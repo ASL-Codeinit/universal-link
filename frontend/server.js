@@ -26,6 +26,10 @@ app.get('/video', (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'call.html'));
 });
 
+app.get('/call-ended', (req, res) => {
+    res.sendFile(path.join(__dirname, 'pages', 'call-ended.html'));
+});
+
 app.get('/setup', (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'setup.html'));
 });
@@ -36,6 +40,7 @@ io.on('connection', (socket) => {
     // --- ROOM LOGIC ---
     socket.on('join-room', (roomId) => {
         socket.join(roomId);
+        socket._activeRoom = roomId;
         console.log(`📍 User ${socket.id} joined room: ${roomId}`);
         
         // Notify others in the room that a new person joined
@@ -104,9 +109,32 @@ io.on('connection', (socket) => {
         });
     });
 
+    // --- CALL ENDED ---
+    // One user explicitly ended the call — relay to everyone else in the room
+    socket.on('call-ended', (payload) => {
+        console.log(`📵 Call ended by ${socket.id} in room ${payload.roomId}`);
+        socket.to(payload.roomId).emit('call-ended', {
+            senderId: socket.id,
+            duration: payload.duration,
+            transcript: payload.transcript
+        });
+        // Remember which room this socket was in so we can notify on sudden drop
+        socket._activeRoom   = payload.roomId;
+        socket._callDuration = payload.duration;
+        socket._transcript   = payload.transcript;
+    });
+
     // --- CLEANUP ---
     socket.on('disconnect', () => {
         console.log(`❌ User disconnected: ${socket.id}`);
+        // If the socket dropped without sending call-ended, notify the other peer
+        if (socket._activeRoom) {
+            socket.to(socket._activeRoom).emit('call-ended', {
+                senderId: socket.id,
+                duration: socket._callDuration || 0,
+                transcript: socket._transcript || []
+            });
+        }
     });
 });
 

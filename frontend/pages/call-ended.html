@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SignLink | Call Ended</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../css/call-ended.css">
+</head>
+<body>
+
+    <div class="header">
+        <div class="logo" aria-label="SignLink logo"></div>
+        <span class="header-brand">SignLink</span>
+    </div>
+
+    <div class="page-content">
+
+        <div class="status-card">
+            <div class="icon-wrap" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="1.8"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45
+                             c.98.37 2.05.59 3.14.59a2 2 0 0 1 2 2v3a2 2 0 0 1-2.18 2
+                             C7.55 20.84 3.16 16.45 2 9.18A2 2 0 0 1 4 7h3a2 2 0 0 1 2 1.72
+                             c.13 1.08.37 2.13.7 3.14a2 2 0 0 1-.45 2.1L10.68 13.31z"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+            </div>
+
+            <h1>Call Ended</h1>
+            <p class="subtitle">The session has been disconnected.</p>
+
+            <div class="duration-badge">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <span id="durationDisplay">0:00</span>
+            </div>
+
+            <a class="home-btn" href="/">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="2.2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                    <polyline points="9 22 9 12 15 12 15 22"/>
+                </svg>
+                Back to Home
+            </a>
+        </div>
+
+        <div class="transcript-card">
+            <div class="transcript-header">
+                <h3>Call Transcript</h3>
+                <span class="transcript-count" id="transcriptCount">0 messages</span>
+            </div>
+            <div class="transcript-body" id="transcriptBody">
+                <div class="transcript-empty">No signed messages were recorded in this session.</div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const rawDuration   = parseInt(sessionStorage.getItem('callDuration') || '0', 10);
+        const rawTranscript = sessionStorage.getItem('callTranscript');
+
+        let entries = [];
+        try { entries = JSON.parse(rawTranscript || '[]'); } catch (_) {}
+
+        function formatDuration(ms) {
+            const totalSec = Math.floor(ms / 1000);
+            const m = Math.floor(totalSec / 60);
+            const s = totalSec % 60;
+            return m + ':' + String(s).padStart(2, '0');
+        }
+
+        document.getElementById('durationDisplay').textContent = formatDuration(rawDuration);
+
+        var body  = document.getElementById('transcriptBody');
+        var count = document.getElementById('transcriptCount');
+
+        if (entries.length > 0) {
+            body.innerHTML = '';
+            entries.forEach(function(entry) {
+                var div = document.createElement('div');
+                div.className = 'transcript-entry';
+                div.innerHTML =
+                    '<div class="entry-text">' + (entry.text || '') + '</div>' +
+                    '<div class="entry-time">'  + (entry.time || '') + '</div>';
+                body.appendChild(div);
+            });
+            count.textContent = entries.length + ' message' + (entries.length !== 1 ? 's' : '');
+        } else {
+            count.textContent = '0 messages';
+        }
+
+        sessionStorage.removeItem('callDuration');
+        sessionStorage.removeItem('callTranscript');
+    </script>
+
+</body>
+</html>

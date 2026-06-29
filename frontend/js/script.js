@@ -37,6 +37,9 @@ let currentStablePrediction = "";
 let isMicMuted = false;
 let isCameraMuted = false;
 
+// Call duration tracking
+let callStartTime = null;
+
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', function() {
     userMode = sessionStorage.getItem('userMode') || 'speaker';
@@ -190,6 +193,7 @@ pc.ontrack = (event) => {
         remoteVideo.srcObject = event.streams[0];
         console.log('✅ Remote video stream attached');
         updateStatus('Connected! Video call active.');
+        callStartTime = Date.now(); // ← start the clock
         const statusMsg = document.getElementById('statusMessage');
         if (statusMsg) statusMsg.style.display = 'none';
         const remoteName = document.getElementById('remoteName');
@@ -312,6 +316,12 @@ function setupSocketHandlers() {
             `;
         }
     });
+
+    // When the remote peer ends the call, redirect us to the call-ended page
+    socket.on('call-ended', (data) => {
+        console.log('📵 Remote ended the call');
+        goToCallEnded(data.duration, data.transcript || []);
+    });
 }
 
 // MEDIAPIPE HANDS DETECTION
@@ -346,14 +356,24 @@ function setDetectionIndicatorState(isActive) {
     if (hudEl) { hudEl.innerText = ''; hudEl.style.color = ''; }
 }
 
+// ── FIX: draw landmarks at the PiP's displayed pixel size, not raw stream res ──
+// Previously: canvas.width = video.videoWidth  (e.g. 1280)
+// MediaPipe normalised coords (0–1) × 1280 = dots drawn far outside the ~200px PiP
+// Now: canvas intrinsic size = CSS layout size of the canvas element itself
 function onHandsDetected(results) {
     const canvas = document.getElementById('localCanvas');
     const ctx = canvas.getContext('2d');
     const video = document.getElementById('localVideo');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+
+    // Match intrinsic canvas resolution to its actual displayed size in the PiP
+    const displayW = canvas.clientWidth  || canvas.offsetWidth  || video.clientWidth  || 200;
+    const displayH = canvas.clientHeight || canvas.offsetHeight || video.clientHeight || 150;
+    if (canvas.width !== displayW || canvas.height !== displayH) {
+        canvas.width  = displayW;
+        canvas.height = displayH;
+    }
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         missingHandFrames = 0;
         for (let i = 0; i < results.multiHandLandmarks.length; i++) {
@@ -370,9 +390,9 @@ function onHandsDetected(results) {
             const detectedHandedness = [];
 
             for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-                const landmarks    = results.multiHandLandmarks[i];
+                const landmarks     = results.multiHandLandmarks[i];
                 const rawHandedness = results.multiHandedness[i].label;
-                const handedness   = rawHandedness === 'Left' ? 'Right' : 'Left';
+                const handedness    = rawHandedness === 'Left' ? 'Right' : 'Left';
                 detectedHandedness.push(handedness);
                 const features = extractRobustFeatures(landmarks);
                 if (handedness === 'Left')       leftFeatures  = features;
@@ -721,7 +741,36 @@ function clearTranscript() {
     updateTranscriptDisplay();
 }
 
-// CONTROL BUTTONS
+// ── Collect transcript entries from the DOM ──────────────────────────────────
+function collectTranscript() {
+    const msgs = document.querySelectorAll('#chatMessages .chat-message');
+    const entries = [];
+    msgs.forEach(msg => {
+        const text = msg.querySelector('.chat-message-sign')?.textContent || '';
+        const time = msg.querySelector('.chat-message-time')?.textContent || '';
+        if (text) entries.push({ text, time });
+    });
+    return entries;
+}
+
+// ── Navigate both peers to the call-ended page ───────────────────────────────
+function goToCallEnded(durationMs, transcriptEntries) {
+    if (localStream) localStream.getTracks().forEach(t => t.stop());
+    if (pc) pc.close();
+
+    const duration = durationMs || (callStartTime ? Date.now() - callStartTime : 0);
+    const entries  = transcriptEntries && transcriptEntries.length
+        ? transcriptEntries
+        : collectTranscript();
+
+    sessionStorage.setItem('callDuration',  String(duration));
+    sessionStorage.setItem('callTranscript', JSON.stringify(entries));
+
+    // Do NOT call socket.disconnect() here — the page navigation naturally
+    // closes the connection, and doing it synchronously kills the socket
+    // before the server can relay 'call-ended' to the other peer.
+    window.location.href = '/call-ended';
+}
 
 window.toggleMic = function() {
     isMicMuted = !isMicMuted;
@@ -746,12 +795,29 @@ window.toggleCamera = function() {
 };
 
 window.endCall = function() {
-    if (confirm('Are you sure you want to end the call?')) {
-        if (localStream) localStream.getTracks().forEach(t => t.stop());
-        if (pc) pc.close();
-        if (socket) socket.disconnect();
-        window.location.href = '/';
+    const modal = document.getElementById('endCallModal');
+    if (modal) modal.style.display = 'flex';
+};
+
+window.confirmEndCall = function() {
+    const modal = document.getElementById('endCallModal');
+    if (modal) modal.style.display = 'none';
+
+    const duration = callStartTime ? Date.now() - callStartTime : 0;
+    const entries  = collectTranscript();
+
+    if (socket && roomId) {
+        // Emit and give the server a brief moment to relay before navigating
+        socket.emit('call-ended', { roomId, duration, transcript: entries });
+        setTimeout(function() { goToCallEnded(duration, entries); }, 300);
+    } else {
+        goToCallEnded(duration, entries);
     }
+};
+
+window.cancelEndCall = function() {
+    const modal = document.getElementById('endCallModal');
+    if (modal) modal.style.display = 'none';
 };
 
 window.testMLAPI = async function() {
