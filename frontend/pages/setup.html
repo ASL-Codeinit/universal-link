@@ -95,7 +95,7 @@ const camMsg = document.getElementById('camMsg');
 
 async function startCamera() {
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         video.srcObject = stream;
         sessionStorage.setItem('cameraGranted', 'true');
         camMsg.classList.add('hidden');
