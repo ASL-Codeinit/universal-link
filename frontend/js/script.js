@@ -4,10 +4,11 @@
 const IS_LOCAL   = window.location.hostname === 'localhost'
                 || window.location.hostname === '127.0.0.1';
 
-const ACTIVE_BASE = IS_LOCAL
-    ? 'http://127.0.0.1:8000'
-    : 'https://universal-link-backend.kindbay-309802f0.southeastasia.azurecontainerapps.io';
+const LOCAL_BACKEND_PORT = window.ML_BACKEND_PORT || 8000;; // change if your backend runs on a different port
 
+const ACTIVE_BASE = IS_LOCAL
+    ? `http://127.0.0.1:${LOCAL_BACKEND_PORT}`
+    : 'https://universal-link-backend.kindbay-309802f0.southeastasia.azurecontainerapps.io';
 function getAPIUrl()         { return `${ACTIVE_BASE}/predict`; }
 function getGrammarUrl()     { return `${ACTIVE_BASE}/fix-grammar`; }
 function getResetBufferUrl() { return `${ACTIVE_BASE}/reset-buffer`; }

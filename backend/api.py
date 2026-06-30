@@ -127,8 +127,7 @@ def predict(data: LandmarkRequest):
     now = time.time()
     last_seen = session_last_seen.get(data.session_id)
 
-    # If this session has been idle too long,
-    # start a fresh gesture.
+    # If this session has been idle too long, start a fresh gesture.
     if last_seen is not None and (now - last_seen) > GESTURE_TIMEOUT:
         print(f"[{data.session_id}] Gesture timeout. Clearing buffer.")
         buffer.clear()
@@ -137,8 +136,7 @@ def predict(data: LandmarkRequest):
     buffer.append(landmarks)
 
     print(data.session_id)
-    print(
-    f"Session={data.session_id} | Buffer={len(buffer)}/{SEQUENCE_LENGTH}")
+    print(f"Session={data.session_id} | Buffer={len(buffer)}/{SEQUENCE_LENGTH}")
 
     # not enough frames yet — still buffering
     if len(buffer) < SEQUENCE_LENGTH:
@@ -162,9 +160,17 @@ def predict(data: LandmarkRequest):
             confidence, predicted = torch.max(probs, dim=1)
             confidence = float(confidence.item())
             sign = classes[predicted.item()]
-            print(
-    f"Prediction: {sign} | Confidence: {confidence:.3f}"
-            )
+            print(f"Prediction: {sign} | Confidence: {confidence:.3f}")
+
+        # ── Filter low-confidence predictions before returning ──
+        if confidence < CONFIDENCE_THRESHOLD:
+            return {
+                "sign": "...",
+                "confidence": confidence,
+                "handedness": data.handedness,
+                "buffering": False,
+                "low_confidence": True
+            }
 
         return {
             "sign": sign,
@@ -173,8 +179,7 @@ def predict(data: LandmarkRequest):
             "buffering": False
         }
     except Exception as e:
-        return {"error": f"Prediction failed: {str(e)}"}
-
+        return {"error": f"Prediction failed: {str(e)}"}   
 
 @app.post("/reset-buffer")
 def reset_buffer(data: ResetRequest):
@@ -223,3 +228,8 @@ async def fix_grammar(data: GrammarRequest):
         return {"sentence": corrected_sentence.strip()}
     except Exception as e:
         return {"error": str(e), "fallback": raw_text}
+    
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("ML_BACKEND_PORT", 8000))
+    uvicorn.run("api:app", host="0.0.0.0", port=port, reload=False)

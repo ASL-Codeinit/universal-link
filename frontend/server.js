@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+require('dotenv').config({ path: '../.env' });
 
 const app = express();
 const server = http.createServer(app);
@@ -14,6 +15,12 @@ const io = new Server(server, {
     }
 });
 
+const ML_BACKEND_PORT = process.env.ML_BACKEND_PORT || 8000;
+
+app.get('/config.js', (req, res) => {
+    res.type('application/javascript');
+    res.send(`window.ML_BACKEND_PORT = ${ML_BACKEND_PORT};`);
+});
 // Serve your HTML/JS files from the frontend folder
 app.use(express.static(__dirname, { index: false }));
 
