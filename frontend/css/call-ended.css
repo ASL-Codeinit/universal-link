@@ -24,24 +24,29 @@ body {
     gap: 15px;
 }
 
-.logo-small {
-    width: 42px;
-    height: 42px;
-    background-image: url('/css/sign-language.png');
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-    border-radius: 8px;
-    border: 1px solid rgba(138, 163, 136, 0.18);
-    background-color: rgba(224, 236, 218, 0.85);
-    flex-shrink: 0;
+.header-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+    color: inherit;
 }
 
+.logo-small {
+            width: 42px;
+            height: 42px;
+            background-image: url('sign-language.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            border-radius: 8px;
+            border: 1px solid rgba(138, 163, 136, 0.18);
+            background-color: rgba(224, 236, 218, 0.85);
+        }
+
 .header-brand {
-    font-size: 20px;
-    font-weight: 700;
-    color: #bfd8b3;
-    letter-spacing: 0.3px;
+    font-size: 1.2rem;
+    font-weight: 600;
 }
 
 /* ── Page layout ─────────────────────────────────────────── */
