@@ -21,6 +21,15 @@ let userMode = 'speaker';
 let roomId = null;
 let socket = null;
 
+function normalizeUserMode(mode = userMode) {
+    if (!mode) return 'speaker';
+    return mode === 'listener' ? 'speaker' : mode;
+}
+
+function isSignerMode(mode = userMode) {
+    return normalizeUserMode(mode) === 'signer';
+}
+
 // 1. Maintain the runtime state buffer in your script scope
 let wordStack = []; 
 let currentBestPrediction = "";
@@ -37,13 +46,16 @@ let currentStablePrediction = "";
 // Control button states
 let isMicMuted = false;
 let isCameraMuted = false;
+let isAutoTtsEnabled = true;
+let ttsQueue = [];
+let isTtsPlaying = false;
 
 // Call duration tracking
 let callStartTime = null;
 
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', function() {
-    userMode = sessionStorage.getItem('userMode') || 'speaker';
+    userMode = normalizeUserMode(sessionStorage.getItem('userMode') || 'speaker');
     console.log('User mode:', userMode);
 
     roomId = getRoomFromURL();
@@ -67,22 +79,25 @@ document.addEventListener('DOMContentLoaded', function() {
     const localDetection = document.getElementById('localDetection');
     const localSubtitles = document.getElementById('localSubtitles');
     const remoteSubtitles = document.getElementById('remoteSubtitles');
+    const remotePanel = document.querySelector('.remote-panel');
     
-    if (userMode === 'signer') {
+    if (isSignerMode(userMode)) {
         if (localDetection) localDetection.style.display = 'flex';
         if (localSubtitles) localSubtitles.style.display = 'block';
-        if (chatDrawer) {
-            chatDrawer.classList.add('close-drawer');
-            chatDrawer.classList.remove('open-drawer');
-        }
     } else {
         if (remoteSubtitles) remoteSubtitles.style.display = 'block';
-        if (chatDrawer) {
-            chatDrawer.classList.remove('close-drawer');
-            chatDrawer.classList.add('open-drawer');
-            const toggleBtn = document.getElementById('chatToggleBtn');
-            if (toggleBtn) toggleBtn.classList.add('active-chat-mode');
-        }
+    }
+
+    if (chatDrawer) {
+        chatDrawer.classList.remove('close-drawer');
+        chatDrawer.classList.add('open-drawer');
+    }
+
+    const toggleBtn = document.getElementById('chatToggleBtn');
+    if (toggleBtn) toggleBtn.classList.add('active-chat-mode');
+
+    if (remotePanel) {
+        remotePanel.style.width = 'calc(100% - 350px)';
     }
     
     initializeMedia();
@@ -247,7 +262,7 @@ function setupSocketHandlers() {
 
     socket.on('remote-user-mode', (data) => {
         console.log('👤 Remote user mode:', data.mode);
-        if (data.mode === 'signer' && userMode === 'speaker') {
+        if (data.mode === 'signer' && !isSignerMode(userMode)) {
             const remoteSubtitles = document.getElementById('remoteSubtitles');
             if (remoteSubtitles) remoteSubtitles.style.display = 'block';
         }
@@ -308,7 +323,7 @@ function setupSocketHandlers() {
             return;
         }
         console.log('📩 Received completed sentence from friend:', finalSentence);
-        addToTranscript(finalSentence);
+        addToTranscript(finalSentence, { source: 'remote' });
         const remoteSubtitleText = document.getElementById('remoteSubtitleText');
         if (remoteSubtitleText) {
             remoteSubtitleText.innerHTML = `
@@ -572,12 +587,15 @@ function handleIncomingPrediction(prediction) {
 
 function updateWordBufferUI() {
     const wordBufferBox = document.getElementById('wordBufferBox');
-    if (!wordBufferBox) return;
-    if (wordStack.length === 0) {
-        wordBufferBox.innerHTML = 'Waiting for detected words...';
-        return;
+    userMode = normalizeUserMode(sessionStorage.getItem('userMode') || userMode || 'speaker');
+    if (isSignerMode(userMode)) {
+        if (!wordBufferBox) return;
+        if (wordStack.length === 0) {
+            wordBufferBox.innerHTML = 'Waiting for detected words...';
+            return;
+        }
+        wordBufferBox.innerHTML = wordStack.map(word => `<span>${word}</span>`).join('');
     }
-    wordBufferBox.innerHTML = wordStack.map(word => `<span>${word}</span>`).join('');
 }
 
 function clearWordBufferUI() {
@@ -607,11 +625,23 @@ function pushToStack(word) {
 }
 
 window.addEventListener('keydown', async (event) => {
+    const activeElement = document.activeElement;
+    const isTypingTarget = activeElement && (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.isContentEditable
+    );
+
+    if (!isSignerMode(userMode) || isTypingTarget) {
+        return;
+    }
+
     if (event.key === '0') {
         event.preventDefault();
         resetSentenceBuilding();
         return;
     }
+
     if (event.key === 'Backspace') {
         event.preventDefault();
         if (wordStack.length === 0) return;
@@ -621,9 +651,11 @@ window.addEventListener('keydown', async (event) => {
         updateStatus('Removed last word');
         return;
     }
+
     if (event.key === '.') {
+        event.preventDefault();
         if (wordStack.length === 0) return;
-        console.log("🧠 Sending stack to Groq:", wordStack);
+        console.log('🧠 Sending stack to Groq:', wordStack);
         try {
             const response = await fetch(getGrammarUrl(), {
                 method: 'POST',
@@ -632,7 +664,7 @@ window.addEventListener('keydown', async (event) => {
             });
             const data = await response.json();
             if (data.sentence) {
-                console.log("✨ Translation Result:", data.sentence);
+                console.log('✨ Translation Result:', data.sentence);
                 addToTranscript(data.sentence);
                 if (socket && roomId) {
                     socket.emit('send-sentence', { roomId: roomId, sentence: data.sentence });
@@ -647,7 +679,7 @@ window.addEventListener('keydown', async (event) => {
                 resetServerBuffer();
             }
         } catch (err) {
-            console.error("Network communication failed:", err);
+            console.error('Network communication failed:', err);
         }
     }
 });
@@ -666,18 +698,22 @@ function displayLocalSubtitles(prediction) {
 }
 
 function toggleChatDrawer() {
-    const drawer    = document.getElementById('chatDrawer');
+    const drawer = document.getElementById('chatDrawer');
     const toggleBtn = document.getElementById('chatToggleBtn');
-    if (drawer && toggleBtn) {
-        if (drawer.classList.contains('close-drawer')) {
-            drawer.classList.remove('close-drawer');
-            drawer.classList.add('open-drawer');
-            toggleBtn.classList.add('active-chat-mode');
-        } else {
-            drawer.classList.remove('open-drawer');
-            drawer.classList.add('close-drawer');
-            toggleBtn.classList.remove('active-chat-mode');
-        }
+    const remote = document.querySelector('.remote-panel');
+
+    if (drawer.classList.contains('close-drawer')) {
+        drawer.classList.remove('close-drawer');
+        drawer.classList.add('open-drawer');
+        toggleBtn.classList.add('active-chat-mode');
+
+        remote.style.width = "calc(100% - 350px)";
+    } else {
+        drawer.classList.remove('open-drawer');
+        drawer.classList.add('close-drawer');
+        toggleBtn.classList.remove('active-chat-mode');
+
+        remote.style.width = "100%";
     }
 }
 
@@ -704,13 +740,173 @@ function updateAPIStats() {
 
 // TRANSCRIPT
 
+function speech(text) {
+    queueSpeech(text);
+}
+
+function toggleAutoSpeech() {
+    isAutoTtsEnabled = !isAutoTtsEnabled;
+    const button = document.getElementById('autoTtsBtn');
+    if (!button) return;
+
+    button.classList.toggle('active', isAutoTtsEnabled);
+    button.textContent = isAutoTtsEnabled ? '🔊' : '🔈';
+    button.setAttribute('data-tooltip', isAutoTtsEnabled ? 'Disable auto speech' : 'Enable auto speech');
+
+    if (!isAutoTtsEnabled) {
+        speechSynthesis.cancel();
+        ttsQueue = [];
+        isTtsPlaying = false;
+    }
+}
+
+function updateAutoSpeechButton() {
+    const button = document.getElementById('autoTtsBtn');
+    if (!button) return;
+    button.classList.toggle('active', isAutoTtsEnabled);
+    button.textContent = isAutoTtsEnabled ? '🔊' : '🔈';
+    button.setAttribute('data-tooltip', isAutoTtsEnabled ? 'Disable auto speech' : 'Enable auto speech');
+}
+
+function queueSpeech(text) {
+    if (!text || typeof text !== 'string') return;
+    const cleanText = text.trim();
+    if (!cleanText || !isAutoTtsEnabled) return;
+
+    ttsQueue.push(cleanText);
+    if (!isTtsPlaying) {
+        playNextTts();
+    }
+}
+
+function playNextTts() {
+    if (!isAutoTtsEnabled || isTtsPlaying || ttsQueue.length === 0) return;
+
+    isTtsPlaying = true;
+    const text = ttsQueue.shift();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = 1;
+    utterance.onend = () => {
+        isTtsPlaying = false;
+        playNextTts();
+    };
+    utterance.onerror = () => {
+        isTtsPlaying = false;
+        playNextTts();
+    };
+    speechSynthesis.speak(utterance);
+}
+
+function updateTranscriptPanel() {
+    userMode = normalizeUserMode(sessionStorage.getItem('userMode') || userMode || 'speaker');
+    const label = document.getElementById('wordBufferLabel');
+    const box = document.getElementById('wordBufferBox');
+    console.log('User mode:', userMode);
+    console.log('box ', box);
+
+    if (isSignerMode(userMode)) {
+        label.textContent = 'Sentence Builder';
+        box.textContent = 'Waiting for detected words...';
+    } else {
+        label.textContent = 'Speech-to-Text';
+        box.innerHTML = `
+            <button class="speech-btn" onclick="startSpeechRecognition()">
+                🎤 Press to Start Speech-to-Text
+            </button>`;
+    }
+}
+
+function startSpeechRecognition() {
+    // 1. Check browser support
+    const box = document.getElementById("wordBufferBox");
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        alert("Your browser does not support Speech Recognition. Try Google Chrome.");
+        return;
+    }
+
+    // 2. Change the box into an input field with a send button
+    box.innerHTML = `
+                <div class="input-wrapper">
+            <input
+                type="text"
+                id="speech-input"
+                placeholder="Listening..."
+            >
+            <button id="send-btn" onclick="sendMessage()">
+                📩
+            </button>
+        </div>
+    `;
+    const speechInput = document.getElementById('speech-input');
+    speechInput.focus();
+    const recognition = new SpeechRecognition();
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+
+        const speechInput = document.getElementById("speech-input");
+        if (!speechInput) return;
+
+        sendMessage();
+    });
+    // Configure recognition settings
+    recognition.continuous = false; // Stops automatically when you finish speaking
+    recognition.interimResults = true; // Shows results as you speak
+
+    // 3. Update the input box value as you speak
+    recognition.onresult = (event) => {
+        let currentTranscript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            currentTranscript += event.results[i][0].transcript;
+        }
+        speechInput.value = currentTranscript; // Allows user to manually edit it later
+    };
+
+    // Optional: Handle errors or end of speech
+    recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        speechInput.placeholder = "Error occurred. Try typing instead.";
+    };
+
+    // 4. Start listening
+    recognition.start();
+}
+
+function sendMessage() {
+    const box = document.getElementById("wordBufferBox");
+    const speechInput = document.getElementById('speech-input');
+    const message = speechInput.value.trim();
+
+    if (message) {
+        console.log(message)
+        console.log("Message Sent:", message);
+        addToTranscript(message, { source: 'local' });
+        console.log(socket.connected);
+        socket.emit("send-sentence", {
+            roomId: roomId,
+            sentence: message
+        });
+        // Reset back to the original microphone button state
+        box.innerHTML = `
+            <button class="speech-btn" onclick="startSpeechRecognition()">
+                🎤 Press to Start Speech-to-Text
+            </button>
+        `;
+    } else {
+        alert("Please say or type something before sending!");
+    }
+}
+
 let transcript = [];
 
-function addToTranscript(text) {
+function addToTranscript(text, options = {}) {
+    userMode = normalizeUserMode(sessionStorage.getItem('userMode') || userMode || 'speaker');
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
     const emptyPrompt = chatMessages.querySelector('.chat-empty');
     if (emptyPrompt) emptyPrompt.remove();
+    const source = options.source || 'local';
     const messageDiv = document.createElement('div');
     messageDiv.className = 'chat-message';
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -719,6 +915,9 @@ function addToTranscript(text) {
         <div class="chat-message-time">${timestamp}</div>
     `;
     chatMessages.appendChild(messageDiv);
+    if (source === 'remote') {
+        queueSpeech(text);
+    }
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 

@@ -29,12 +29,8 @@
         <!-- Guide popover -->
         <div class="guide-popover" id="guidePopover">
             <div class="guide-title">Hotkeys &amp; Notes</div>
-            <ul class="guide-list">
-                <li><kbd>Backspace</kbd> Delete last signed word</li>
-                <li><kbd>0</kbd> Reset sentence (start over)</li>
-                <li><kbd>.</kbd> End sentence &amp; send to transcript</li>
-            </ul>
-            <div class="guide-note">
+            <ul class="guide-list" id="guideList"></ul>
+            <div class="guide-note" id="guideNote">
                 ⏳ <strong>Buffer warm-up:</strong> The first ~20 frames after you start signing are buffered before predictions begin. There will be a short delay at the very start — this is normal.
             </div>
         </div>
@@ -84,14 +80,14 @@
             </div>
         </div>
 
-        <div class="transcript-panel close-drawer" id="chatDrawer">
+        <div class="transcript-panel open-drawer" id="chatDrawer">
             <div class="chat-section">
                 <div class="chat-header">
                     <h3>Transcript</h3>
                     <button class="clear-chat-btn" onclick="clearTranscript()">Clear</button>
                 </div>
                 <div class="word-buffer-panel">
-                    <div class="word-buffer-label">Sentence Builder</div>
+                    <div class="word-buffer-label" id="wordBufferLabel">Sentence builder</div>
                     <div class="word-buffer-content" id="wordBufferBox">Waiting for detected words...</div>
                 </div>
                 <div class="chat-messages" id="chatMessages">
@@ -112,6 +108,9 @@
         </button>
         <button class="control-btn" id="chatToggleBtn" data-tooltip="Toggle Chat" onclick="toggleChatDrawer()">
             💬
+        </button>
+        <button class="control-btn" id="autoTtsBtn" data-tooltip="Disable auto speech" onclick="toggleAutoSpeech()">
+            🔊
         </button>
         <button class="control-btn end-call" data-tooltip="End Call" onclick="endCall()">
             📞
@@ -229,6 +228,12 @@
         }
         .guide-note strong { color: #fbbf24; }
 
+        .control-btn.active {
+            background: rgba(125, 211, 252, 0.2);
+            border-color: rgba(125, 211, 252, 0.45);
+            color: #bae6fd;
+        }
+
         .copy-passkey-btn {
             display: inline-flex;
             align-items: center;
@@ -262,9 +267,11 @@
         const userName = sessionStorage.getItem('userName') || 'Guest';
         const _userMode = sessionStorage.getItem('userMode') || 'speaker';
         document.getElementById('userNameDisplay').textContent = userName;
+        updateTranscriptPanel();
+        updateAutoSpeechButton();
 
-        // Apply layout mode: 'signer' = interpreter required, 'speaker' = no interpreter
-        document.body.dataset.mode = (_userMode === 'signer') ? 'signer' : 'speaker';
+        // Apply layout mode: 'signer' = interpreter required, 'listener' = speech-to-text chat
+        document.body.dataset.mode = (_userMode === 'signer') ? 'signer' : 'listener';
 
         // ── Copy passkey ─────────────────────────────────────────────────────
         function copyPasskey() {
@@ -282,6 +289,29 @@
         }
         function toggleGuide() {
             const pop = document.getElementById('guidePopover');
+            const list = document.getElementById('guideList');
+            const note = document.getElementById('guideNote');
+            const isSigner = _userMode === 'signer';
+
+            if (list) {
+                list.innerHTML = isSigner ? [
+                    '<li><kbd>Backspace</kbd> Delete the last signed word</li>',
+                    '<li><kbd>0</kbd> Reset the sentence and start over</li>',
+                    '<li><kbd>.</kbd> End the sentence and send it</li>',
+                    '<li><kbd>💬</kbd> Toggle the chat panel</li>'
+                ].join('') : [
+                    '<li><kbd>🎤</kbd> Use the microphone and press send to chat</li>',
+                    '<li><kbd>🔊</kbd> Tap any message to hear it spoken aloud</li>',
+                    '<li><kbd>💬</kbd> Toggle the chat panel</li>'
+                ].join('');
+            }
+
+            if (note) {
+                note.innerHTML = isSigner
+                    ? '⏳ <strong>Buffer warm-up:</strong> The first ~20 frames after you start signing are buffered before predictions begin. There will be a short delay at the very start — this is normal.'
+                    : '🗣️ <strong>Speech-to-text:</strong> Speak clearly, review the text, and press the send button to share it in the chat.';
+            }
+
             pop.classList.toggle('open');
         }
         // Close popover when clicking elsewhere
