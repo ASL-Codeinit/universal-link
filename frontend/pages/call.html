@@ -91,7 +91,7 @@
                     <button class="clear-chat-btn" onclick="clearTranscript()">Clear</button>
                 </div>
                 <div class="word-buffer-panel">
-                    <div class="word-buffer-label">Sentence Builder</div>
+                    <div class="word-buffer-label" id="wordBufferLabel">Sentence builder</div>
                     <div class="word-buffer-content" id="wordBufferBox">Waiting for detected words...</div>
                 </div>
                 <div class="chat-messages" id="chatMessages">
@@ -262,6 +262,7 @@
         const userName = sessionStorage.getItem('userName') || 'Guest';
         const _userMode = sessionStorage.getItem('userMode') || 'speaker';
         document.getElementById('userNameDisplay').textContent = userName;
+        updateTranscriptPanel();
 
         // Apply layout mode: 'signer' = interpreter required, 'speaker' = no interpreter
         document.body.dataset.mode = (_userMode === 'signer') ? 'signer' : 'speaker';

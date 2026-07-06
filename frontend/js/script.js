@@ -572,12 +572,14 @@ function handleIncomingPrediction(prediction) {
 
 function updateWordBufferUI() {
     const wordBufferBox = document.getElementById('wordBufferBox');
-    if (!wordBufferBox) return;
+    userMode = sessionStorage.getItem('userMode') || 'speaker';
+    if(userMode === 'signer')
+    {if (!wordBufferBox) return;
     if (wordStack.length === 0) {
         wordBufferBox.innerHTML = 'Waiting for detected words...';
         return;
     }
-    wordBufferBox.innerHTML = wordStack.map(word => `<span>${word}</span>`).join('');
+    wordBufferBox.innerHTML = wordStack.map(word => `<span>${word}</span>`).join('');}
 }
 
 function clearWordBufferUI() {
@@ -610,6 +612,13 @@ window.addEventListener('keydown', async (event) => {
     if (event.key === '0') {
         event.preventDefault();
         resetSentenceBuilding();
+        return;
+    }
+    if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+    ) {
         return;
     }
     if (event.key === 'Backspace') {
@@ -666,18 +675,22 @@ function displayLocalSubtitles(prediction) {
 }
 
 function toggleChatDrawer() {
-    const drawer    = document.getElementById('chatDrawer');
+    const drawer = document.getElementById('chatDrawer');
     const toggleBtn = document.getElementById('chatToggleBtn');
-    if (drawer && toggleBtn) {
-        if (drawer.classList.contains('close-drawer')) {
-            drawer.classList.remove('close-drawer');
-            drawer.classList.add('open-drawer');
-            toggleBtn.classList.add('active-chat-mode');
-        } else {
-            drawer.classList.remove('open-drawer');
-            drawer.classList.add('close-drawer');
-            toggleBtn.classList.remove('active-chat-mode');
-        }
+    const remote = document.querySelector('.remote-panel');
+
+    if (drawer.classList.contains('close-drawer')) {
+        drawer.classList.remove('close-drawer');
+        drawer.classList.add('open-drawer');
+        toggleBtn.classList.add('active-chat-mode');
+
+        remote.style.width = "calc(100% - 350px)";
+    } else {
+        drawer.classList.remove('open-drawer');
+        drawer.classList.add('close-drawer');
+        toggleBtn.classList.remove('active-chat-mode');
+
+        remote.style.width = "100%";
     }
 }
 
@@ -704,9 +717,117 @@ function updateAPIStats() {
 
 // TRANSCRIPT
 
+function speech(text){
+    const utterance = new SpeechSynthesisUtterance(text);
+    speechSynthesis.speak(utterance);
+}
+
+function updateTranscriptPanel() {
+    userMode = sessionStorage.getItem('userMode') || 'speaker';
+    const label = document.getElementById("wordBufferLabel");
+    const box = document.getElementById("wordBufferBox");
+    console.log('User mode:', userMode);
+    console.log('box ',box)
+
+    if (userMode === 'signer') {
+        label.textContent = "Sentence Builder";
+        box.textContent = "Waiting for detected words...";
+    } else {
+        // console.log('heyyy')
+        label.textContent = "Speech-to-Text";
+        // box.textContent = "Press the microphone to start speaking.";
+        box.innerHTML = `
+            <button class="speech-btn" onclick="startSpeechRecognition()">
+                🎤 Press to Start Speech-to-Text
+            </button>`;
+    }
+}
+
+function startSpeechRecognition() {
+    // 1. Check browser support
+    const box = document.getElementById("wordBufferBox");
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        alert("Your browser does not support Speech Recognition. Try Google Chrome.");
+        return;
+    }
+
+    // 2. Change the box into an input field with a send button
+    box.innerHTML = `
+                <div class="input-wrapper">
+            <input
+                type="text"
+                id="speech-input"
+                placeholder="Listening..."
+            >
+            <button id="send-btn" onclick="sendMessage()">
+                📩
+            </button>
+        </div>
+    `;
+    const speechInput = document.getElementById('speech-input');
+    speechInput.focus();
+    const recognition = new SpeechRecognition();
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+
+        const speechInput = document.getElementById("speech-input");
+        if (!speechInput) return;
+
+        sendMessage();
+    });
+    // Configure recognition settings
+    recognition.continuous = false; // Stops automatically when you finish speaking
+    recognition.interimResults = true; // Shows results as you speak
+
+    // 3. Update the input box value as you speak
+    recognition.onresult = (event) => {
+        let currentTranscript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            currentTranscript += event.results[i][0].transcript;
+        }
+        speechInput.value = currentTranscript; // Allows user to manually edit it later
+    };
+
+    // Optional: Handle errors or end of speech
+    recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        speechInput.placeholder = "Error occurred. Try typing instead.";
+    };
+
+    // 4. Start listening
+    recognition.start();
+}
+
+function sendMessage() {
+    const box = document.getElementById("wordBufferBox");
+    const speechInput = document.getElementById('speech-input');
+    const message = speechInput.value.trim();
+
+    if (message) {
+        console.log(message)
+        console.log("Message Sent:", message);
+        addToTranscript(message);
+        console.log(socket.connected);
+        socket.emit("send-sentence", {
+            roomId: roomId,
+            sentence: message
+        });
+        // Reset back to the original microphone button state
+        box.innerHTML = `
+            <button class="speech-btn" onclick="startSpeechRecognition()">
+                🎤 Press to Start Speech-to-Text
+            </button>
+        `;
+    } else {
+        alert("Please say or type something before sending!");
+    }
+}
+
 let transcript = [];
 
 function addToTranscript(text) {
+    userMode = sessionStorage.getItem('userMode') || 'speaker';
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
     const emptyPrompt = chatMessages.querySelector('.chat-empty');
@@ -717,8 +838,10 @@ function addToTranscript(text) {
     messageDiv.innerHTML = `
         <div class="chat-message-sign">${text}</div>
         <div class="chat-message-time">${timestamp}</div>
+        <button class="tts-btn" title="Listen to this message" onclick="speech('${text}')">🔊</button>
     `;
     chatMessages.appendChild(messageDiv);
+    if (userMode === 'speaker')speech(text);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
